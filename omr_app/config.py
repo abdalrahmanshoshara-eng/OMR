@@ -76,6 +76,11 @@ def answer_keys_dir(cfg_dir: Path = None) -> Path:
     d = Path(os.environ["OMR_ANSWER_KEYS_DIR"])
     if not d.exists():
         shutil.copytree(config_dir() / "answer_keys", d)
+    else:
+        # keys added to the repo later (git pull) appear on the server; existing / UI-edited files are never overwritten
+        for src in (config_dir() / "answer_keys").glob("*.json"):
+            if not (d / src.name).exists():
+                shutil.copy2(src, d / src.name)
     return d
 
 

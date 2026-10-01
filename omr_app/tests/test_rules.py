@@ -62,9 +62,18 @@ def test_answer_keys_match_marking_scheme():
     keys = load_answer_keys()
     got = {k["specialization"]: "".join(k["answers"][str(i)] for i in range(1, 11)) for k in keys.values()}
     assert got == {
+        # سلم تصحيح المعاهد
         "business_management": "BCABBBBBBB",
         "commercial_banking": "BBAAABBBCB",
         "applied_statistics": "BBABBAAABB",
+        # سلم تصحيح الهندسات
+        "mechanical_engineering": "BBCCCBBBBB",
+        "electrical_engineering": "ADBABBBBBB",
+        "civil_engineering": "CCABBBBBBB",
+        "informatics_engineering": "BABBBBBBBB",
+        # سلم تصحيح رياضيات + اقتصاد
+        "commerce_economics": "BBBABBBBBB",
+        "mathematics": "BBBBBBBBBA",
     }
     for k in keys.values():
         assert k["scoring"]["total_score"] == 100 and k["scoring"]["question_score"] == 10

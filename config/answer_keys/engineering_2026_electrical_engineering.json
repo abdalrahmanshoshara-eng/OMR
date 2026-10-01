@@ -1,0 +1,25 @@
+{
+  "id": "engineering_2026_electrical_engineering",
+  "exam": "امتحان الهندسات 2026",
+  "specialization": "electrical_engineering",
+  "specialization_label": "Electrical Engineering",
+  "specialization_label_ar": "هندسة كهربائية",
+  "answers": {
+    "1": "A",
+    "2": "D",
+    "3": "B",
+    "4": "A",
+    "5": "B",
+    "6": "B",
+    "7": "B",
+    "8": "B",
+    "9": "B",
+    "10": "B"
+  },
+  "scoring": {
+    "total_score": 100,
+    "question_score": 10,
+    "wrong_score": 0,
+    "blank_score": 0
+  }
+}

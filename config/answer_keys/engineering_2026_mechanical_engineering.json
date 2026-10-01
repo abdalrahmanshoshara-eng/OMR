@@ -1,0 +1,25 @@
+{
+  "id": "engineering_2026_mechanical_engineering",
+  "exam": "امتحان الهندسات 2026",
+  "specialization": "mechanical_engineering",
+  "specialization_label": "Mechanical Engineering",
+  "specialization_label_ar": "هندسة ميكانيكية",
+  "answers": {
+    "1": "B",
+    "2": "B",
+    "3": "C",
+    "4": "C",
+    "5": "C",
+    "6": "B",
+    "7": "B",
+    "8": "B",
+    "9": "B",
+    "10": "B"
+  },
+  "scoring": {
+    "total_score": 100,
+    "question_score": 10,
+    "wrong_score": 0,
+    "blank_score": 0
+  }
+}

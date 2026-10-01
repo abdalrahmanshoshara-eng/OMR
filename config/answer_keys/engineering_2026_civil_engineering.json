@@ -1,0 +1,25 @@
+{
+  "id": "engineering_2026_civil_engineering",
+  "exam": "امتحان الهندسات 2026",
+  "specialization": "civil_engineering",
+  "specialization_label": "Civil Engineering",
+  "specialization_label_ar": "هندسة مدنية",
+  "answers": {
+    "1": "C",
+    "2": "C",
+    "3": "A",
+    "4": "B",
+    "5": "B",
+    "6": "B",
+    "7": "B",
+    "8": "B",
+    "9": "B",
+    "10": "B"
+  },
+  "scoring": {
+    "total_score": 100,
+    "question_score": 10,
+    "wrong_score": 0,
+    "blank_score": 0
+  }
+}
