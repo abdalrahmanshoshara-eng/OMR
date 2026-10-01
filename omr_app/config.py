@@ -72,15 +72,14 @@ def answer_keys_dir(cfg_dir: Path = None) -> Path:
 
 
 def validate_answer_key(key: dict, num_questions: int, options) -> dict:
+    """num_questions is the printed sheet's count; a key may have more or fewer (graded on the overlap)."""
     _require(key, ["id", "exam", "specialization", "answers"], f"answer key {key.get('id', '?')}")
     if not VALID_KEY_ID.match(str(key["id"])):
         raise ConfigError(f"answer key id '{key['id']}' must match {VALID_KEY_ID.pattern}")
     answers = {str(k): str(v).strip().upper() for k, v in key["answers"].items()}
-    expected_q = {str(i) for i in range(1, num_questions + 1)}
-    if set(answers) != expected_q:
-        raise ConfigError(
-            f"answer key {key['id']}: answers must cover questions 1..{num_questions} exactly"
-        )
+    n = len(answers)
+    if not n or set(answers) != {str(i) for i in range(1, n + 1)}:
+        raise ConfigError(f"answer key {key['id']}: answers must be numbered 1..N without gaps")
     bad = {q: a for q, a in answers.items() if a not in options}
     if bad:
         raise ConfigError(f"answer key {key['id']}: invalid options {bad} (allowed {options})")
@@ -88,7 +87,7 @@ def validate_answer_key(key: dict, num_questions: int, options) -> dict:
     key["answers"] = answers
     scoring = {"total_score": 100, "wrong_score": 0, "blank_score": 0, **key.get("scoring", {})}
     if "question_score" not in scoring and "question_scores" not in scoring:
-        scoring["question_score"] = scoring["total_score"] / num_questions
+        scoring["question_score"] = scoring["total_score"] / n
     key["scoring"] = scoring
     return key
 

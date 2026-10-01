@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from omr_app import __version__
 from omr_app.config import REPO_ROOT, ConfigError, config_dir, save_answer_key
 from omr_app.detection import SPECIAL_VALUES
-from omr_app.export import detail_rows, summary_rows, to_csv, to_json, to_xlsx
+from omr_app.export import to_pdf, to_xlsx
 from omr_app.imaging import SUPPORTED_EXTS
 from omr_app.pipeline import Grader
 from omr_app.scoring import FAILED, MANUALLY_REVIEWED, REVIEW_REQUIRED
@@ -251,23 +251,20 @@ def _export_results(bid):
 
 
 @app.get("/api/batches/{bid}/export.{fmt}")
-def export_batch(bid: int, fmt: str, details: bool = False):
+def export_batch(bid: int, fmt: str):
     b = store.batch(bid)
     if not b:
         raise HTTPException(404, "batch not found")
     results = _export_results(bid)
+    labels = {k["id"]: k.get("specialization_label_ar") or k["specialization"] for k in _keys().values()}
     base = re.sub(r"[^\w\-]+", "_", b["name"], flags=re.UNICODE).strip("_") or f"batch_{bid}"
-    if fmt == "csv":
-        body = to_csv(detail_rows(results) if details else summary_rows(results))
-        fn = f"{base}{'_details' if details else ''}.csv"
-        return Response(body.encode("utf-8"), media_type="text/csv; charset=utf-8", headers=_dl(fn))
     if fmt == "xlsx":
         buf = io.BytesIO()
-        to_xlsx(results, buf, title=b["name"])
+        to_xlsx(results, buf, title=b["name"], spec_labels=labels)
         return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=_dl(f"{base}.xlsx"))
-    if fmt == "json":
-        return Response(to_json(results).encode("utf-8"), media_type="application/json", headers=_dl(f"{base}.json"))
-    raise HTTPException(400, "format must be csv, xlsx or json")
+    if fmt == "pdf":
+        return Response(to_pdf(results, title=b["name"], spec_labels=labels), media_type="application/pdf", headers=_dl(f"{base}.pdf"))
+    raise HTTPException(400, "format must be xlsx or pdf")
 
 
 def _dl(filename):

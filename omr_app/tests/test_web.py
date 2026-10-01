@@ -65,10 +65,25 @@ def test_batch_review_export(client):
     # images
     assert client.get(f"/api/sheets/{rev['id']}/image/overlay").status_code == 200
     # exports
-    csv = client.get(f"/api/batches/{bid}/export.csv").content.decode("utf-8-sig")
-    assert "MANUALLY_REVIEWED" in csv and "سارة" in csv and "Q5:MULTIPLE->B" in csv
     x = client.get(f"/api/batches/{bid}/export.xlsx")
     assert x.status_code == 200 and x.content[:2] == b"PK"
+    from openpyxl import load_workbook
+
+    ws = load_workbook(io.BytesIO(x.content)).active
+    rows = list(ws.values)
+    assert rows[0] == ("الاختصاص", "رقم الصفحة في ملف PDF", "الاسم", "الإجابات الصحيحة", "الإجابات الخاطئة",
+                       "العلامة", "العلامة القصوى", "المراجِع")
+    assert all(r[0] == "إدارة الأعمال" for r in rows[1:])
+    assert any(r[2] == "سارة" and r[5] == 100 and r[7] == "tester" for r in rows[1:])
+    p = client.get(f"/api/batches/{bid}/export.pdf")
+    assert p.status_code == 200 and p.content[:4] == b"%PDF"
+    import pymupdf
+
+    import unicodedata
+
+    text = unicodedata.normalize("NFKC", pymupdf.open(stream=p.content, filetype="pdf")[0].get_text())  # shaped glyphs -> letters
+    assert "سارة" in text and "100" in text
+    assert client.get(f"/api/batches/{bid}/export.csv").status_code == 400
     # re-key the whole batch to another specialization
     b = client.post(f"/api/batches/{bid}/answer-key", json={"answer_key_id": "institute_2026_commercial_banking"}).json()
     assert b["answer_key_id"] == "institute_2026_commercial_banking"

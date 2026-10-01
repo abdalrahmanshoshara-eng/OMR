@@ -97,3 +97,15 @@ def test_score_and_status():
 def test_all_blank_sheet_goes_to_review():
     qs = _qs([BLANK] * 10)
     assert sheet_status(qs, {"review_on_blank": False, "review_on_all_blank": True}, False)[0] == REVIEW_REQUIRED
+
+
+def test_answer_key_any_question_count():
+    ans = {str(i): "A" for i in range(1, 16)}
+    k = validate_answer_key({"id": "x_15", "exam": "e", "specialization": "s", "answers": ans}, 10, list("ABCD"))
+    assert len(k["answers"]) == 15 and k["scoring"]["question_score"] == pytest.approx(100 / 15)
+    with pytest.raises(ConfigError):  # gap in numbering
+        validate_answer_key({"id": "x_gap", "exam": "e", "specialization": "s", "answers": {"1": "A", "3": "B"}}, 10, list("ABCD"))
+    # sheet questions missing from a shorter key are not graded
+    short = validate_answer_key({"id": "x_5", "exam": "e", "specialization": "s", "answers": {str(i): "B" for i in range(1, 6)}}, 10, list("ABCD"))
+    s = score_questions(_qs(list("BBBBBCCCCC")), short)
+    assert s["score"] == 100 and s["correct_count"] == 5 and s["wrong_count"] == 0

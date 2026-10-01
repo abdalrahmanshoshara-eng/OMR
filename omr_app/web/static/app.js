@@ -169,7 +169,7 @@ async function pageNew() {
       <div class="card grid">
         <label class="field">اسم الدفعة <small>اختياري — مثل: قاعة 3 / الفترة الصباحية</small>
           <input type="text" name="name" placeholder="دفعة ${new Date().toLocaleDateString("en-CA")}"></label>
-        <label class="field">الامتحان والاختصاص (مفتاح الإجابة)
+        <label class="field">الامتحان والاختصاص (سلم التصحيح)
           <select name="answer_key_id" required>${keyOptions(KEYS[0]?.id)}</select>
           <small>يمكن تغيير الاختصاص لاحقاً لكل ورقة أو للدفعة كاملة، ويُعاد حساب العلامة.</small></label>
         <div id="keyPreview"></div>
@@ -256,9 +256,7 @@ async function pageBatch(bid) {
         <div class="actions">
           ${firstReview ? `<a class="btn primary" href="#/sheet/${firstReview.id}">ابدأ المراجعة (${b.counts.REVIEW_REQUIRED})</a>` : ""}
           <a class="btn" href="/api/batches/${bid}/export.xlsx">⬇ Excel</a>
-          <a class="btn" href="/api/batches/${bid}/export.csv">⬇ CSV</a>
-          <a class="btn" href="/api/batches/${bid}/export.csv?details=true" title="نسب التعبئة لكل خيار لكل سؤال">⬇ تفاصيل التدقيق CSV</a>
-          <a class="btn" href="/api/batches/${bid}/export.json">⬇ JSON</a>
+          <a class="btn" href="/api/batches/${bid}/export.pdf">⬇ PDF</a>
         </div>
       </div>
       ${busy ? `<div class="card" style="margin-bottom:16px"><div class="row"><b>جارِ معالجة الملفات…</b><span class="spacer"></span>
@@ -274,7 +272,7 @@ async function pageBatch(bid) {
             <select id="rekey">${keyOptions(b.answer_key_id)}</select></label>
         </div>
         ${shown.length ? `<div class="table-wrap"><table class="tbl"><thead><tr>
-            <th>#</th><th>المرشح</th><th>الملف</th><th>الحالة</th><th>العلامة</th><th>الإجابات (س1 ← س10)</th><th>الملاحظات</th></tr></thead>
+            <th>#</th><th>المرشح</th><th>الملف</th><th>الحالة</th><th>العلامة</th><th>الإجابات (س1 ← س${META.questions})</th><th>الملاحظات</th></tr></thead>
           <tbody>${shown.map((s) => sheetRow(s)).join("")}</tbody></table></div>`
           : `<div class="empty">${busy ? "بانتظار النتائج…" : "لا توجد أوراق مطابقة"}</div>`}
       </div>`;
@@ -284,7 +282,7 @@ async function pageBatch(bid) {
     q.addEventListener("input", () => { search = q.value; const pos = q.selectionStart; render(); const q2 = document.getElementById("q"); q2.focus(); q2.setSelectionRange(pos, pos); });
     document.getElementById("rekey").addEventListener("change", async (e) => {
       const k = keyById(e.target.value);
-      if (!confirm(`تغيير مفتاح الإجابة لكل أوراق الدفعة إلى:\n${keyLabel(k)}\nوإعادة حساب كل العلامات؟`)) { e.target.value = b.answer_key_id; return; }
+      if (!confirm(`تغيير سلم التصحيح لكل أوراق الدفعة إلى:\n${keyLabel(k)}\nوإعادة حساب كل العلامات؟`)) { e.target.value = b.answer_key_id; return; }
       try {
         await api(`/api/batches/${bid}/answer-key`, jsonOpts("POST", { answer_key_id: k.id, actor: reviewer() || null }));
         ({ b, sheets } = await load());
@@ -384,14 +382,14 @@ async function pageSheet(sid) {
             <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
               <label class="field">رقم / معرّف المرشح <input type="text" id="cid" dir="auto" value="${esc(r.candidate_id)}"></label>
               <label class="field">اسم المرشح <small>يُدخل يدوياً من صورة الاسم</small><input type="text" id="cname" dir="auto" value="${esc(r.candidate_name || "")}" placeholder="الاسم الكامل"></label>
-              <label class="field">الاختصاص (مفتاح الإجابة) <select id="ckey">${keyOptions(r.answer_key_id)}</select></label>
+              <label class="field">الاختصاص (سلم التصحيح) <select id="ckey">${keyOptions(r.answer_key_id)}</select></label>
               <label class="field">اسم المراجِع <input type="text" id="actor" value="${esc(reviewer())}" placeholder="اسمك (يُحفظ في السجل)"></label>
             </div>
           </div>
 
           ${failed ? "" : `<div class="card">
             <div class="row" style="margin-bottom:6px"><h2 style="margin:0">الأسئلة</h2><span class="spacer"></span>
-              <span class="small muted">الشريط = نسبة تعبئة الدائرة • <span class="key-mark"></span> = إجابة المفتاح • "تعديل…" لحسم السؤال يدوياً</span></div>
+              <span class="small muted">الشريط = نسبة تعبئة الدائرة • <span class="key-mark"></span> = إجابة سلم التصحيح • "تعديل…" لحسم السؤال يدوياً</span></div>
             <table class="qtable"><thead><tr><th>س</th><th>نسب التعبئة</th><th>المكتشف</th><th>الصحيح</th><th>النهائي</th><th></th></tr></thead><tbody>
             ${qs.map((qd) => {
               const fin = finalOf(qd), exp = key ? key.answers[String(qd.q)] : qd.expected;
@@ -534,25 +532,26 @@ function keyAnswersHtml(k) {
 async function pageKeys(editId) {
   KEYS = await api("/api/keys");
   $app.innerHTML = `
-    <div class="page-head"><div><h1>مفاتيح الإجابة</h1>
-      <p class="sub">كل مفتاح ملف JSON مستقل في <code>config/answer_keys/</code> — يمكن إضافة امتحان أو اختصاص جديد دون تعديل الكود.</p></div>
-      <div class="actions"><button class="btn primary" id="newKey">+ مفتاح جديد</button></div></div>
+    <div class="page-head"><div><h1>سلالم التصحيح</h1>
+      <p class="sub">كل سلم تصحيح ملف JSON مستقل في <code>config/answer_keys/</code> — يمكن إضافة امتحان أو اختصاص جديد دون تعديل الكود.</p></div>
+      <div class="actions"><button class="btn primary" id="newKey">+ سلم تصحيح جديد</button></div></div>
     <div id="formHost"></div>
     <div class="keys">${KEYS.map((k) => `
       <div class="card"><div class="row"><div><b>${esc(k.specialization_label_ar || k.specialization)}</b>
         <div class="small muted">${esc(k.specialization_label || "")} • ${esc(k.exam)}</div></div><span class="spacer"></span>
         <button class="btn sm" data-edit="${esc(k.id)}">تعديل</button></div>
         ${keyAnswersHtml(k)}
-        <div class="small muted">العلامة الكلية <b class="num">${k.scoring.total_score}</b> • لكل سؤال <b class="num">${k.scoring.question_score ?? "مخصص"}</b>
-          • الخطأ <b class="num">${k.scoring.wrong_score}</b> • الفارغ <b class="num">${k.scoring.blank_score}</b></div>
+        <div class="small muted">عدد الأسئلة <b class="num">${Object.keys(k.answers).length}</b> • العلامة الكلية <b class="num">${k.scoring.total_score}</b>
+          • لكل سؤال <b class="num">${k.scoring.question_score === undefined ? "مخصص" : fmtScore(k.scoring.question_score)}</b></div>
         <div class="small muted mono">${esc(k.id)}</div></div>`).join("")}</div>`;
   const showForm = (k) => {
     const isNew = !k;
     k = k || { id: "", exam: KEYS[0]?.exam || "", specialization: "", specialization_label: "", specialization_label_ar: "",
       answers: Object.fromEntries(Array.from({ length: META.questions }, (_, i) => [String(i + 1), "A"])),
-      scoring: { total_score: 100, question_score: 100 / META.questions, wrong_score: 0, blank_score: 0 } };
+      scoring: { total_score: 100, question_score: 100 / META.questions } };
+    let answers = Object.values(k.answers);
     document.getElementById("formHost").innerHTML = `
-      <form class="card" id="kf" style="margin-bottom:16px"><h2>${isNew ? "مفتاح إجابة جديد" : "تعديل: " + esc(k.id)}</h2>
+      <form class="card" id="kf" style="margin-bottom:16px"><h2>${isNew ? "سلم تصحيح جديد" : "تعديل: " + esc(k.id)}</h2>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
           <label class="field">اسم الامتحان<input type="text" name="exam" required value="${esc(k.exam)}"></label>
           <label class="field">الاختصاص بالعربية<input type="text" name="specialization_label_ar" required value="${esc(k.specialization_label_ar || "")}"></label>
@@ -560,19 +559,39 @@ async function pageKeys(editId) {
           <label class="field">رمز الاختصاص <small>أحرف إنجليزية صغيرة و _</small><input type="text" name="specialization" required pattern="[a-z0-9_\\-]+" value="${esc(k.specialization)}"></label>
           <label class="field">المعرّف <small>اسم الملف</small><input type="text" name="id" required pattern="[a-z0-9][a-z0-9_\\-]+" value="${esc(k.id)}" ${isNew ? "" : "readonly"}></label>
         </div>
-        <h3 style="margin-top:14px">الإجابات الصحيحة</h3>
-        <div class="key-form-answers">${Object.keys(k.answers).map((q) => `<label>السؤال ${q}<select name="a${q}">${META.options.map((o) => `<option ${k.answers[q] === o ? "selected" : ""}>${o}</option>`).join("")}</select></label>`).join("")}</div>
+        <div class="row" style="margin-top:14px"><h3 style="margin:0">الإجابات الصحيحة</h3><span class="spacer"></span>
+          <label class="row small">عدد الأسئلة <input type="number" name="qcount" min="1" max="500" step="1" value="${answers.length}" style="width:80px"></label>
+          <button type="button" class="btn sm" id="addQ">+ إضافة سؤال</button>
+          <button type="button" class="btn sm" id="delQ">− حذف آخر سؤال</button></div>
+        <p class="small" style="color:var(--review)" id="qwarn"></p>
+        <div class="key-form-answers" id="qhost"></div>
         <h3 style="margin-top:14px">التنقيط</h3>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
           <label class="field">العلامة الكلية<input type="number" step="any" name="total_score" value="${k.scoring.total_score}"></label>
-          <label class="field">علامة السؤال<input type="number" step="any" name="question_score" value="${k.scoring.question_score ?? ""}"></label>
-          <label class="field">علامة الإجابة الخاطئة<input type="number" step="any" name="wrong_score" value="${k.scoring.wrong_score}"></label>
-          <label class="field">علامة السؤال الفارغ<input type="number" step="any" name="blank_score" value="${k.scoring.blank_score}"></label>
+          <label class="field">علامة السؤال <small>تُحسب تلقائياً عند تغيير عدد الأسئلة</small><input type="number" step="any" name="question_score" value="${k.scoring.question_score ?? ""}"></label>
         </div>
-        <div class="row" style="margin-top:14px"><button class="btn primary">حفظ المفتاح</button><button type="button" class="btn" id="cancel">إلغاء</button></div>
+        <div class="row" style="margin-top:14px"><button class="btn primary">حفظ سلم التصحيح</button><button type="button" class="btn" id="cancel">إلغاء</button></div>
       </form>`;
     const f = document.getElementById("kf");
     const slug = () => { if (isNew && f.exam.value && f.specialization.value) f.id.value = (f.exam.value.toLowerCase().replace(/[^a-z0-9]+/g, "_") + "_" + f.specialization.value).replace(/^_+|_+$/g, ""); };
+    const renderQs = () => {
+      document.getElementById("qhost").innerHTML = answers.map((a, i) => `<label>السؤال ${i + 1}<select data-i="${i}">${META.options.map((o) => `<option ${a === o ? "selected" : ""}>${o}</option>`).join("")}</select></label>`).join("");
+      f.qcount.value = answers.length;
+      document.getElementById("qwarn").textContent = answers.length === META.questions ? "" :
+        `تنبيه: ورقة الإجابة المطبوعة الحالية فيها ${META.questions} أسئلة فقط. الأوراق المصححة بهذا السلم ستُحوَّل إلى المراجعة لأن عدد الأسئلة مختلف.`;
+    };
+    const setCount = (n) => {
+      n = Math.max(1, Math.min(500, Math.floor(n) || 1));
+      answers = Array.from({ length: n }, (_, i) => answers[i] || META.options[0]);
+      f.question_score.value = +(+f.total_score.value / n).toFixed(4);
+      renderQs();
+    };
+    renderQs();
+    document.getElementById("qhost").addEventListener("change", (e) => { if (e.target.dataset.i !== undefined) answers[+e.target.dataset.i] = e.target.value; });
+    f.qcount.addEventListener("change", () => setCount(+f.qcount.value));
+    document.getElementById("addQ").onclick = () => setCount(answers.length + 1);
+    document.getElementById("delQ").onclick = () => setCount(answers.length - 1);
+    f.total_score.addEventListener("change", () => (f.question_score.value = +(+f.total_score.value / answers.length).toFixed(4)));
     f.exam.addEventListener("input", slug);
     f.specialization.addEventListener("input", slug);
     document.getElementById("cancel").onclick = () => (document.getElementById("formHost").innerHTML = "");
@@ -581,10 +600,10 @@ async function pageKeys(editId) {
       const body = {
         id: f.id.value.trim(), exam: f.exam.value.trim(), specialization: f.specialization.value.trim(),
         specialization_label: f.specialization_label.value.trim(), specialization_label_ar: f.specialization_label_ar.value.trim(),
-        answers: Object.fromEntries(Object.keys(k.answers).map((q) => [q, f["a" + q].value])),
-        scoring: { ...k.scoring, total_score: +f.total_score.value, question_score: +f.question_score.value, wrong_score: +f.wrong_score.value, blank_score: +f.blank_score.value },
+        answers: Object.fromEntries(answers.map((a, i) => [String(i + 1), a])),
+        scoring: { ...k.scoring, total_score: +f.total_score.value, question_score: +f.question_score.value },
       };
-      try { await api("/api/keys", jsonOpts("POST", body)); toast("تم حفظ مفتاح الإجابة"); pageKeys(); } catch (err) { toast(err.message, true); }
+      try { await api("/api/keys", jsonOpts("POST", body)); toast("تم حفظ سلم التصحيح"); pageKeys(); } catch (err) { toast(err.message, true); }
     });
     f.scrollIntoView({ behavior: "smooth" });
   };
@@ -594,16 +613,13 @@ async function pageKeys(editId) {
 
 // ------------------------------------------------------------------ page: help
 async function pageHelp() {
-  const docs = META.threshold_docs || {};
-  const rows = [];
-  Object.entries(META.thresholds).forEach(([sec, vals]) => Object.entries(vals).forEach(([k, v]) => rows.push([`${sec}.${k}`, v, docs[k] || ""])));
   $app.innerHTML = `
     <div class="page-head"><div><h1>دليل الحالات والإعدادات</h1><p class="sub">كيف يقرر النظام، وماذا تعني كل حالة.</p></div></div>
     <h2>حالة الورقة</h2>
     <div class="legend">${Object.keys(STATUS_AR).map((k) => `<div class="card">${badge(k)}<p>${STATUS_HELP[k]}</p></div>`).join("")}</div>
     <h2 style="margin-top:22px">نتيجة السؤال</h2>
     <div class="legend">
-      <div class="card"><span class="ans correct">B</span> <span class="ans wrong">C</span><p>دائرة واحدة مظللة بوضوح. أخضر = يطابق المفتاح، أحمر = خطأ.</p></div>
+      <div class="card"><span class="ans correct">B</span> <span class="ans wrong">C</span><p>دائرة واحدة مظللة بوضوح. أخضر = يطابق سلم التصحيح، أحمر = خطأ.</p></div>
       ${Object.keys(VALUE_AR).map((v) => `<div class="card"><span class="ans ${v}">${VALUE_AR[v]}</span> <span class="small muted mono">${v}</span><p>${VALUE_HELP[v]}</p></div>`).join("")}
     </div>
     <div class="card" style="margin-top:22px"><h2>كيف تتم القراءة (بدون ذكاء اصطناعي)</h2>
@@ -612,15 +628,10 @@ async function pageHelp() {
         <li><b>المحاذاة:</b> مطابقة معالم الورقة المطبوعة (ORB) مع النسخة الأصلية ← تصحيح الدوران والإزاحة والمقياس والمنظور، ثم ضبط دقيق على كل دائرة "O" مطبوعة.</li>
         <li><b>توحيد الإضاءة:</b> تقدير لون الورق محلياً لإلغاء اختلاف السطوع والتباين والظلال.</li>
         <li><b>قياس التعبئة:</b> نسبة الحبر داخل الدائرة المطبوعة وحولها (مع استبعاد خط الدائرة نفسه)، وكشف إشارات ✓ و ×.</li>
-        <li><b>التصنيف:</b> حسب العتبات أدناه ← إجابة / فارغ / متعدد / غير واضح. لا تخمين أبداً.</li>
-        <li><b>المقارنة والعلامة:</b> مع مفتاح الإجابة المختار، وتُحفظ كل النسب والقرارات للتدقيق.</li>
+        <li><b>التصنيف:</b> حسب العتبات المحددة في الإعدادات ← إجابة / فارغ / متعدد / غير واضح. لا تخمين أبداً.</li>
+        <li><b>المقارنة والعلامة:</b> مع سلم التصحيح المختار، وتُحفظ كل النسب والقرارات للتدقيق.</li>
       </ol>
       <p class="small muted">النتائج حتمية: نفس الصورة ونفس الإعدادات تعطي نفس النتيجة دائماً. بصمة الإعدادات الحالية: <code>${esc(META.config_fingerprint)}</code></p>
-    </div>
-    <div class="card"><h2>العتبات الحالية</h2>
-      <p class="small muted">للتعديل: حرّر <code>${esc(META.config_dir)}/thresholds.json</code> ثم أعد تشغيل الخادم (أو استخدم "إعادة المعالجة" على ورقة).</p>
-      <div class="table-wrap"><table class="tbl th-table"><thead><tr><th>المفتاح</th><th>القيمة</th><th>الشرح</th></tr></thead>
-      <tbody>${rows.map(([k, v, d]) => `<tr style="cursor:default"><td>${esc(k)}</td><td class="num">${esc(JSON.stringify(v))}</td><td class="small">${esc(d)}</td></tr>`).join("")}</tbody></table></div>
     </div>`;
 }
 

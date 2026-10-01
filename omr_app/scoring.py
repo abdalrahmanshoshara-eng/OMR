@@ -27,6 +27,9 @@ def score_questions(questions: list, answer_key: dict) -> dict:
         qd["expected"] = expected
         qd["final"] = final
         qd["correct"] = final == expected
+        if expected is None:  # printed question not in this answer key: not graded
+            qd["points"] = 0.0
+            continue
         if qd["correct"]:
             pts = question_points(scoring, q)
             correct += 1

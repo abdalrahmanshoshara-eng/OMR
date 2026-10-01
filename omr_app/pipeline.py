@@ -19,7 +19,7 @@ from omr_app.config import config_fingerprint, load_answer_keys, load_sheet_conf
 from omr_app.detection import BLANK, MULTIPLE, UNCERTAIN, classify_question, ink_threshold, measure_bubbles
 from omr_app.imaging import darkness_map, load_input
 from omr_app.layout import load_layout
-from omr_app.scoring import FAILED, score_questions, sheet_status
+from omr_app.scoring import FAILED, REVIEW_REQUIRED, score_questions, sheet_status
 
 log = logging.getLogger("omr_app.pipeline")
 
@@ -164,6 +164,10 @@ class Grader:
         result["answers"] = {str(qd["q"]): qd["final"] for qd in result["questions"]}
         result["detected_answers"] = {str(qd["q"]): qd["detected"] for qd in result["questions"]}
         status, reasons = sheet_status(result["questions"], self.thresholds["review"], low_alignment)
+        n_key, n_sheet = len(answer_key["answers"]), len(result["questions"])
+        if n_key != n_sheet:
+            reasons.append(f"answer key has {n_key} questions, sheet has {n_sheet}")
+            status = REVIEW_REQUIRED
         if result.get("reviewed"):
             status = "MANUALLY_REVIEWED"
         result["status"], result["status_reasons"] = status, reasons

@@ -79,7 +79,7 @@ def cmd_grade(args):
     if out:
         out.mkdir(parents=True, exist_ok=True)
         (out / "results.csv").write_text(to_csv(summary_rows(results)), encoding="utf-8")
-        to_xlsx(results, out / "results.xlsx")
+        to_xlsx(results, out / "results.xlsx", spec_labels={key["id"]: key.get("specialization_label_ar") or key["specialization"]})
         (out / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
         print(f"Results:      {out / 'results.xlsx'} | results.csv | results.json | sheets/*.json | images/")
     for r in results:
