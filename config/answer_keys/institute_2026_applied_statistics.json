@@ -1,0 +1,25 @@
+{
+  "id": "institute_2026_applied_statistics",
+  "exam": "Institute Exam 2026",
+  "specialization": "applied_statistics",
+  "specialization_label": "Applied Statistics",
+  "specialization_label_ar": "الإحصاء التطبيقي",
+  "answers": {
+    "1": "B",
+    "2": "B",
+    "3": "A",
+    "4": "B",
+    "5": "B",
+    "6": "A",
+    "7": "A",
+    "8": "A",
+    "9": "B",
+    "10": "B"
+  },
+  "scoring": {
+    "total_score": 100,
+    "question_score": 10,
+    "wrong_score": 0,
+    "blank_score": 0
+  }
+}

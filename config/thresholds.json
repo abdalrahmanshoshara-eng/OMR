@@ -1,0 +1,47 @@
+{
+  "_doc": {
+    "darkness": "Darkness of a pixel = 1 - pixel / local paper white (illumination-normalised), so it is independent of scan brightness, contrast and shadows.",
+    "ink_threshold": "A pixel is 'inked' when darkness >= threshold. The threshold adapts per sheet to the pen: using the mean darkness inside the printed O of all 40 bubbles: paper_level = median (empty bubbles dominate), ink_level = ink_level_percentile (marked bubbles dominate); threshold = paper_level + ink_relative_threshold * (ink_level - paper_level), clipped to [paper_level + dark_pixel_threshold_min, dark_pixel_threshold_max]. Light pencil -> lower threshold, dark pen -> stricter threshold (ignores erased residue). Each bubble then uses min(sheet threshold, paper_level + ink_relative_threshold * (its own darkness inside the O - paper_level)) so a uniformly light but complete fill is measured against its own darkness, while half fills / ticks stay partial.",
+    "fill": "Fill ratio of a bubble (0 = empty paper, 1 = completely inked) = hole_weight * (inked fraction of the paper INSIDE the printed 'O') + (1 - hole_weight) * (inked fraction of the bubble area OUTSIDE the printed 'O', up to roi_radius). The printed ring itself is excluded.",
+    "shape": "Tick / cross detection: the ring outside the printed 'O' (up to stroke_probe_radius_pt) is split into stroke_bins angular sectors. A sector is 'hit' when >= stroke_bin_min_cov of it is inked. If there are >= stroke_min_runs separate groups of hit sectors and none is wider than stroke_max_run_bins, the ink forms thin spokes (tick/cross) -> shape 'strokes' -> never accepted as an answer (UNCERTAIN). Only checked when outer < stroke_max_outer_fill (a broadly inked bubble is a fill, even if pen scribbles poke out).",
+    "min_fill": "A bubble with fill >= min_fill counts as MARKED (if min_hole_fill is also met and it is not a tick/cross).",
+    "min_hole_fill": "Minimum inked fraction of the paper INSIDE the printed 'O' for a mark to be accepted. Every correct fill covers the inside of the O; half fills and ticks do not -> UNCERTAIN.",
+    "uncertain_min_fill": "A bubble with fill in [uncertain_min_fill, min_fill) is a PARTIAL mark: the question becomes UNCERTAIN (never guessed). Below it the bubble is EMPTY.",
+    "partial_hole_fill": "Empty bubbles have ~0% ink inside the printed O. If no option of the question is clearly marked, a bubble with >= partial_hole_fill ink inside the O counts as PARTIAL -> UNCERTAIN (catches borderline ticks / half fills). Ignored next to a clear mark (stray dot / erasure).",
+    "faint_hole_darkness": "Safety net: if the mean darkness inside a printed O exceeds the sheet paper_level by >= faint_hole_darkness and no option of the question is clearly marked, the question is UNCERTAIN (never silently BLANK). Faint residue next to a clear mark (erasure) is ignored.",
+    "multiple_mark_fill": "If two or more options are MARKED and the second has fill >= multiple_mark_fill the question is MULTIPLE.",
+    "ambiguity_gap": "If the top option is marked but (top fill - second fill) < ambiguity_gap the question is UNCERTAIN.",
+    "review": "review_on_blank: send sheets with any BLANK question to review. review_on_all_blank: send completely blank sheets to review. review_on_low_alignment: send sheets whose bubble positions could not be verified to review. fail_on_unverified_alignment (default true, takes precedence): mark such sheets FAILED instead, so no answers read from unverified positions are ever shown."
+  },
+  "image": {
+    "pdf_render_dpi": 200,
+    "blur_ksize": 3,
+    "illumination_kernel_pt": 18
+  },
+  "fill": {
+    "dark_pixel_threshold_min": 0.2,
+    "dark_pixel_threshold_max": 0.35,
+    "ink_relative_threshold": 0.5,
+    "ink_level_percentile": 90,
+    "hole_weight": 0.6,
+    "stroke_bin_min_cov": 0.4,
+    "stroke_max_run_bins": 3,
+    "stroke_min_runs": 2,
+    "stroke_max_outer_fill": 0.45
+  },
+  "classification": {
+    "min_fill": 0.45,
+    "min_hole_fill": 0.85,
+    "uncertain_min_fill": 0.2,
+    "faint_hole_darkness": 0.12,
+    "partial_hole_fill": 0.15,
+    "multiple_mark_fill": 0.45,
+    "ambiguity_gap": 0.2
+  },
+  "review": {
+    "review_on_blank": false,
+    "review_on_all_blank": true,
+    "review_on_low_alignment": true,
+    "fail_on_unverified_alignment": true
+  }
+}

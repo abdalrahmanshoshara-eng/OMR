@@ -1,0 +1,17 @@
+services:
+  omr:
+    build: .
+    image: institute-omr:latest
+    container_name: institute-omr
+    ports:
+      - "8000:8000"          # open http://localhost:8000
+    volumes:
+      - omr-data:/data       # database, uploaded scans, generated images
+      - ./config:/app/config # sheet layout, thresholds, answer keys (editable without rebuilding)
+    environment:
+      OMR_LOG_LEVEL: INFO
+      OMR_MAX_UPLOAD_MB: 500
+    restart: unless-stopped
+
+volumes:
+  omr-data:

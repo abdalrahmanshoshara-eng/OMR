@@ -1,0 +1,50 @@
+{
+  "sheet_id": "institute_omr_10q_v1",
+  "description": "Single-page English OMR answer sheet, 10 questions x 4 options (A-D). Bubbles are printed 'O' glyphs inside a grid table.",
+  "reference": {
+    "pdf": "sheet/blank_answer_sheet.pdf",
+    "page": 1,
+    "dpi": 200
+  },
+  "omr_template": "template.json",
+  "questions": {
+    "count": 10,
+    "options": ["A", "B", "C", "D"],
+    "field_label_prefix": "q"
+  },
+  "bubble": {
+    "roi_radius_pt": 5.2,
+    "exclude_printed_glyph": true,
+    "glyph_ink_threshold": 140,
+    "glyph_dilate_px": 1,
+    "patch_half_size_pt": 8.0,
+    "stroke_probe_radius_pt": 7.5,
+    "stroke_bins": 24
+  },
+  "answer_area_pt": [40, 251, 572, 513],
+  "fields": {
+    "candidate_name": { "label": "Candidate Full Name", "rect_pt": [36, 124, 576, 148] },
+    "specialization": { "label": "Specialization", "rect_pt": [36, 145, 576, 168] },
+    "exam_date": { "label": "Examination Date", "rect_pt": [36, 166, 330, 190] },
+    "final_score": { "label": "Final Score", "rect_pt": [338, 531, 574, 579] },
+    "signatures": { "label": "Invigilator signatures", "rect_pt": [40, 530, 338, 580] }
+  },
+  "alignment": {
+    "orb_max_features": 6000,
+    "ratio_test": 0.78,
+    "ransac_reproj_px": 5.0,
+    "min_inliers": 40,
+    "min_inlier_ratio": 0.15,
+    "min_scale": 0.3,
+    "max_scale": 1.6,
+    "max_anisotropy": 0.15,
+    "refine": {
+      "enabled": true,
+      "search_radius_pt": 5.0,
+      "wide_search_radius_pt": 11.0,
+      "min_match_score": 0.55,
+      "min_matched_bubbles": 12,
+      "max_residual_px": 2.5
+    }
+  }
+}
