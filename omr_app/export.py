@@ -103,16 +103,18 @@ def to_xlsx(results, path_or_buffer, title="OMR Results", spec_labels=None):
 
 
 def to_pdf(results, title="OMR Results", spec_labels=None) -> bytes:
-    """A4 RTL table: name, specialization, score out of 100 (multi-page)."""
+    """A4 RTL table: #, name, specialization, score out of 100 (multi-page).
+
+    MuPDF lays tables out left-to-right regardless of dir="rtl", so columns are written in reverse."""
     import pymupdf
 
     lbl = _label_fn(spec_labels)
     e = html.escape
     cell = "border:1px solid #555;padding:4px 6px;"
     rows = "".join(
-        f'<tr><td style="{cell}text-align:center">{i}</td><td style="{cell}">{e(_name(r))}</td>'
-        f'<td style="{cell}">{e(lbl(r))}</td>'
-        f'<td style="{cell}text-align:center">{"—" if score_100(r) is None else f"{score_100(r):g}"}</td></tr>'
+        f'<tr><td style="{cell}text-align:center">{"—" if score_100(r) is None else f"{score_100(r):g}"}</td>'
+        f'<td style="{cell}">{e(lbl(r))}</td><td style="{cell}">{e(_name(r))}</td>'
+        f'<td style="{cell}text-align:center">{i}</td></tr>'
         for i, r in enumerate(results, 1)
     )
     head = f"background-color:#1f3a5f;color:#fff;{cell}"
@@ -120,8 +122,8 @@ def to_pdf(results, title="OMR Results", spec_labels=None) -> bytes:
         f'<div dir="rtl" style="font-size:11pt">'
         f'<h2 style="text-align:center">{e(title)}</h2>'
         f'<table style="border-collapse:collapse;width:100%">'
-        f'<tr><th style="{head}width:8%">#</th><th style="{head}width:42%">الاسم</th>'
-        f'<th style="{head}width:35%">الاختصاص</th><th style="{head}width:15%">العلامة / 100</th></tr>'
+        f'<tr><th style="{head}width:15%">العلامة / 100</th><th style="{head}width:35%">الاختصاص</th>'
+        f'<th style="{head}width:42%">الاسم</th><th style="{head}width:8%">#</th></tr>'
         f"{rows}</table></div>"
     )
     story = pymupdf.Story(html=body)
