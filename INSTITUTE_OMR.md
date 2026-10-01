@@ -15,14 +15,39 @@ Image/PDF → preprocessing → alignment → bubble detection → fill detectio
 ### عبر Docker (الطريقة الموصى بها)
 
 ```bash
+cp .env.example .env      # مرة واحدة: المنفذ والموارد
 docker compose up -d --build
 ```
 
-ثم افتح: **http://localhost:8000**
+ثم افتح: **http://localhost:8510** (المنفذ من `OMR_HOST_PORT` في `.env`)
 
-- البيانات (قاعدة البيانات، الأوراق المرفوعة، الصور الناتجة) محفوظة في volume باسم `omr-data`.
-- مجلد `config/` مربوط بالحاوية: يمكن تعديل العتبات ومفاتيح الإجابة بدون إعادة بناء الصورة
-  (أعد تشغيل الحاوية بعد تعديل `thresholds.json`: `docker compose restart`).
+- البيانات (قاعدة البيانات، الأوراق المرفوعة، الصور الناتجة، **سلالم التصحيح**) محفوظة في volume باسم `institute-omr_omr-data`.
+- سلالم التصحيح تُنسخ من `config/answer_keys/` عند أول تشغيل فقط، وبعدها تُعدَّل من الواجهة وتبقى محفوظة في الـvolume.
+- تعديل العتبات أو تصميم الورقة (`config/`): عدّل الملف ← `git push` ← على السيرفر `./deploy.sh`.
+
+### النشر على سيرفر مشترك (مع منصات أخرى)
+
+المشروع معزول تماماً عن باقي الحاويات: اسم مشروع Compose خاص (`institute-omr`)، شبكة خاصة، volume خاص،
+اسم حاوية `institute-omr`، ولا يحتاج قاعدة بيانات أو Redis خارجية (SQLite داخل الـvolume). حدود الموارد
+(`OMR_CPUS` / `OMR_MEMORY`) تمنع المعالجة الثقيلة من التأثير على المنصات الأخرى، والسجلات محدودة بـ 30MB.
+
+أول مرة:
+
+```bash
+git clone https://github.com/abdalrahmanshoshara-eng/OMR.git ~/institute-omr
+cd ~/institute-omr
+cp .env.example .env     # غيّر OMR_HOST_PORT إذا كان 8510 مستخدماً
+./deploy.sh
+```
+
+التحديث بعد كل `git push`:
+
+```bash
+cd ~/institute-omr && ./deploy.sh
+```
+
+`deploy.sh` يعمل `git pull` ثم يعيد بناء وتشغيل هذه الحاوية فقط، ويرفض التشغيل إذا كان المنفذ مستخدماً من برنامج آخر.
+أوامر مفيدة: `docker compose logs -f` • `docker compose restart` • `docker compose down` (لا يحذف البيانات؛ الحذف يحتاج `-v`).
 
 تصحيح من سطر الأوامر داخل Docker (مجلد أوراق على جهازك):
 

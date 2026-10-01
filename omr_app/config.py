@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 from copy import deepcopy
 from pathlib import Path
 
@@ -68,7 +69,14 @@ def config_fingerprint(*objs) -> str:
 
 # --------------------------------------------------------------------------- answer keys
 def answer_keys_dir(cfg_dir: Path = None) -> Path:
-    return Path(cfg_dir or config_dir()) / "answer_keys"
+    """<config>/answer_keys, or $OMR_ANSWER_KEYS_DIR (e.g. on the data volume so keys edited in the UI
+    survive rebuilds and never conflict with `git pull`); that dir is seeded from <config>/answer_keys once."""
+    if cfg_dir or not os.environ.get("OMR_ANSWER_KEYS_DIR"):
+        return Path(cfg_dir or config_dir()) / "answer_keys"
+    d = Path(os.environ["OMR_ANSWER_KEYS_DIR"])
+    if not d.exists():
+        shutil.copytree(config_dir() / "answer_keys", d)
+    return d
 
 
 def validate_answer_key(key: dict, num_questions: int, options) -> dict:

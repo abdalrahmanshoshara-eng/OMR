@@ -1,17 +1,28 @@
+# Isolated from other stacks on the same host: own project name, network, volume, container name and port.
+# Settings come from .env (copy .env.example). Start / update:  ./deploy.sh   (or: docker compose up -d --build)
+name: institute-omr
+
 services:
   omr:
     build: .
     image: institute-omr:latest
     container_name: institute-omr
     ports:
-      - "8000:8000"          # open http://localhost:8000
+      - "${OMR_BIND:-0.0.0.0}:${OMR_HOST_PORT:-8510}:8000"   # open http://<server>:8510
     volumes:
-      - omr-data:/data       # database, uploaded scans, generated images
-      - ./config:/app/config # sheet layout, thresholds, answer keys (editable without rebuilding)
+      - omr-data:/data       # database, uploaded scans, generated images, answer keys
     environment:
-      OMR_LOG_LEVEL: INFO
-      OMR_MAX_UPLOAD_MB: 500
+      OMR_LOG_LEVEL: ${OMR_LOG_LEVEL:-INFO}
+      OMR_MAX_UPLOAD_MB: ${OMR_MAX_UPLOAD_MB:-500}
+      OMR_ANSWER_KEYS_DIR: /data/answer_keys   # edited in the UI; seeded from config/answer_keys on first start
     restart: unless-stopped
+    cpus: ${OMR_CPUS:-2}
+    mem_limit: ${OMR_MEMORY:-2g}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   omr-data:

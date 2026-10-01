@@ -17,3 +17,6 @@ OMRChecker.wiki/
 data/
 tests/dataset/
 tests/dataset_*/
+
+# deployment settings (per server)
+.env

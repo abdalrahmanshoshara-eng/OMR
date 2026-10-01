@@ -13,3 +13,4 @@ docs
 .claude
 *.md
 !README.md
+.env
