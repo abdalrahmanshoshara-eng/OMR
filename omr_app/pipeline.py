@@ -91,7 +91,7 @@ class Grader:
                 out_dir = Path(out_dir)
                 out_dir.mkdir(parents=True, exist_ok=True)
                 p = out_dir / f"{_safe(cid)}_aligned.jpg"
-                cv2.imwrite(str(p), al.warped, [cv2.IMWRITE_JPEG_QUALITY, 92])
+                _imwrite(p, al.warped, [cv2.IMWRITE_JPEG_QUALITY, 92])
                 r["artifacts"] = {"aligned": p.name, "overlay": p.name, "fields": {}}
             r["processing_ms"] = round((time.perf_counter() - t0) * 1000, 1)
             return r
@@ -208,13 +208,13 @@ class Grader:
         stem = _safe(f"{result['candidate_id']}")
         aligned_path = out_dir / f"{stem}_aligned.jpg"
         overlay_path = out_dir / f"{stem}_overlay.jpg"
-        cv2.imwrite(str(aligned_path), warped, [cv2.IMWRITE_JPEG_QUALITY, 92])
-        cv2.imwrite(str(overlay_path), self.draw_overlay(warped, result), [cv2.IMWRITE_JPEG_QUALITY, 90])
+        _imwrite(aligned_path, warped, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        _imwrite(overlay_path, self.draw_overlay(warped, result), [cv2.IMWRITE_JPEG_QUALITY, 90])
         crops = {}
         for name, f in self.layout.fields_px.items():
             x0, y0, x1, y1 = f["rect_px"]
             p = out_dir / f"{stem}_field_{name}.png"
-            cv2.imwrite(str(p), warped[y0:y1, x0:x1])
+            _imwrite(p, warped[y0:y1, x0:x1])
             crops[name] = p.name
         return {"aligned": aligned_path.name, "overlay": overlay_path.name, "fields": crops}
 
@@ -246,6 +246,14 @@ class Grader:
 
 def _short(v):
     return {BLANK: "_", MULTIPLE: "*", UNCERTAIN: "?"}.get(v, v)
+
+
+def _imwrite(path, img, params=()):
+    # cv2.imwrite mangles non-ASCII (e.g. Arabic) paths on Windows; encode in memory and write via Python
+    ok, buf = cv2.imencode(Path(path).suffix, img, list(params))
+    if not ok:
+        raise OSError(f"cannot encode image: {path}")
+    Path(path).write_bytes(buf.tobytes())
 
 
 def _safe(s):

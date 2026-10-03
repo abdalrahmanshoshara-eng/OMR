@@ -79,8 +79,43 @@ document.getElementById("lightbox").addEventListener("click", (e) => {
   if (e.target.matches("[data-close]") || e.target.id === "lightbox") e.currentTarget.hidden = true;
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.getElementById("lightbox").hidden = true; });
+// clickable table rows are focusable; Enter opens them
+document.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches?.("[data-go]")) location.hash = e.target.dataset.go; });
+
+const svgIcon = (paths, size = 20) =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const ICON = {
+  alert: svgIcon('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>', 34),
+  folder: svgIcon('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', 34),
+  upload: svgIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M12 3v13"/><path d="m7 8 5-5 5 5"/>', 34),
+  search: svgIcon('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>', 34),
+  download: svgIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/>', 17),
+  save: svgIcon('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/>', 17),
+  check: svgIcon('<path d="M20 6 9 17l-5-5"/>', 17),
+  undo: svgIcon('<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/>', 15),
+};
+const emptyState = (icon, html) => `<div class="empty"><div class="big">${icon}</div>${html}</div>`;
+
+// styled replacement for window.confirm(); resolves true on OK
+function confirmDialog(msg, { ok = "تأكيد", cancel = "إلغاء", danger = false } = {}) {
+  return new Promise((resolve) => {
+    const d = document.createElement("dialog");
+    d.className = "dlg";
+    d.innerHTML = `<form method="dialog"><p>${esc(msg).replace(/\n/g, "<br>")}</p>
+      <div class="row"><span class="spacer"></span><button class="btn" value="0">${esc(cancel)}</button>
+      <button class="btn ${danger ? "danger" : "primary"}" value="1">${esc(ok)}</button></div></form>`;
+    d.addEventListener("close", () => { resolve(d.returnValue === "1"); d.remove(); });
+    document.body.append(d);
+    d.showModal();
+  });
+}
 
 // ------------------------------------------------------------------ router
+let leaveGuard = null;   // page-provided: returns true while there is unsaved work
+let pageCleanup = null;  // page-provided: removes page-level listeners
+let currentHash = null;
+window.addEventListener("beforeunload", (e) => { if (leaveGuard?.()) { e.preventDefault(); e.returnValue = ""; } });
+
 const routes = [
   [/^#?\/?$/, pageBatches, "batches"],
   [/^#\/new$/, pageNew, "new"],
@@ -91,16 +126,30 @@ const routes = [
 ];
 
 async function route() {
-  clearInterval(pollTimer);
   const h = location.hash || "#/";
+  if (currentHash !== null && h !== currentHash && leaveGuard?.()) {
+    history.replaceState(null, "", currentHash);
+    const leave = await confirmDialog("توجد تعديلات غير محفوظة على هذه الورقة.\nهل تريد المغادرة دون حفظ؟",
+      { ok: "مغادرة دون حفظ", cancel: "البقاء في الصفحة", danger: true });
+    if (leave) { leaveGuard = null; location.hash = h; }
+    return;
+  }
+  clearInterval(pollTimer);
+  leaveGuard = null;
+  pageCleanup?.();
+  pageCleanup = null;
+  currentHash = h;
   for (const [re, fn, nav] of routes) {
     const m = h.match(re);
     if (m) {
       document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.nav === nav));
+      document.body.classList.add("busy");
       try {
         await fn(...m.slice(1));
       } catch (e) {
-        $app.innerHTML = `<div class="card empty"><div class="big">⚠️</div><p>${esc(e.message)}</p><a class="btn" href="#/">العودة</a></div>`;
+        $app.innerHTML = `<div class="card">${emptyState(ICON.alert, `<p>${esc(e.message)}</p><a class="btn" href="#/">العودة</a>`)}</div>`;
+      } finally {
+        document.body.classList.remove("busy");
       }
       window.scrollTo({ top: 0 });
       return;
@@ -142,7 +191,7 @@ async function pageBatches() {
         <thead><tr><th>#</th><th>الدفعة</th><th>الامتحان / الاختصاص</th><th>التاريخ</th><th>الحالة</th>
           <th>الأوراق</th><th>معتمدة</th><th>للمراجعة</th><th>فشلت</th><th>المتوسط</th></tr></thead>
         <tbody>${batches.map((b) => `
-          <tr data-go="#/batch/${b.id}">
+          <tr data-go="#/batch/${b.id}" tabindex="0">
             <td class="num">${b.id}</td><td><b>${esc(b.name)}</b></td>
             <td>${esc(keyLabel(keyById(b.answer_key_id)) || b.answer_key_id)}</td>
             <td class="small muted">${fmtDate(b.created_at)}</td>
@@ -153,8 +202,8 @@ async function pageBatches() {
             <td class="num" style="color:var(--fail)">${b.counts.FAILED || 0}</td>
             <td class="num">${b.avg_score === null ? "—" : fmtScore(b.avg_score)}</td>
           </tr>`).join("")}</tbody></table></div>`
-        : `<div class="empty"><div class="big">🗂️</div><p>لا توجد دفعات بعد.<br>ابدأ برفع صور أو ملفات PDF لأوراق الإجابة الممسوحة.</p>
-           <a class="btn primary lg" href="#/new">+ رفع أوراق</a></div>`}
+        : emptyState(ICON.folder, `<p><b>لا توجد دفعات بعد</b><br>ابدأ برفع صور أو ملفات PDF لأوراق الإجابة الممسوحة.</p>
+           <a class="btn primary lg" href="#/new">+ رفع أوراق</a>`)}
     </div>`;
   $app.querySelectorAll("[data-go]").forEach((tr) => tr.addEventListener("click", () => (location.hash = tr.dataset.go)));
   if (batches.some((b) => b.state === "queued" || b.state === "processing")) pollTimer = setInterval(() => location.hash === "#/" || !location.hash ? pageBatches() : null, 2500);
@@ -176,7 +225,7 @@ async function pageNew() {
       </div>
       <div class="card">
         <div class="dropzone" id="dz" tabindex="0">
-          <div class="big">📄</div><b>اسحب الملفات إلى هنا أو اضغط للاختيار</b>
+          <div class="big">${ICON.upload}</div><b>اسحب الملفات إلى هنا أو اضغط للاختيار</b>
           <div class="muted small">صور الماسح الضوئي أو ملفات PDF • يمكن اختيار مئات الملفات دفعة واحدة</div>
           <input type="file" id="fi" multiple accept=".png,.jpg,.jpeg,.pdf,.tif,.tiff,.bmp,.webp" hidden>
         </div>
@@ -192,8 +241,11 @@ async function pageNew() {
   };
   const render = () => {
     document.getElementById("fl").innerHTML = files.map((x, i) => `<li><span>${esc(x.name)}</span><span class="muted small num">${(x.size / 1024).toFixed(0)} KB <a href="#" data-rm="${i}">✕</a></span></li>`).join("");
-    document.getElementById("fcount").textContent = files.length ? `${files.length} ملف` : "لم يتم اختيار ملفات";
-    document.getElementById("go").disabled = !files.length;
+    const mb = files.reduce((t, x) => t + x.size, 0) / 1048576;
+    document.getElementById("fcount").textContent = files.length ? `${files.length} ملف • ${mb.toFixed(1)} MB` : "لم يتم اختيار ملفات";
+    const go = document.getElementById("go");
+    go.disabled = !files.length;
+    go.textContent = files.length ? `بدء تصحيح ${files.length} ملف ←` : "بدء التصحيح ←";
   };
   const add = (list) => {
     const ok = [...list].filter((x) => /\.(png|jpe?g|pdf|tiff?|bmp|webp)$/i.test(x.name));
@@ -228,7 +280,7 @@ async function pageNew() {
     } catch (err) {
       toast(err.message, true);
       btn.disabled = false;
-      btn.textContent = "بدء التصحيح ←";
+      render();
     }
   });
 }
@@ -255,8 +307,8 @@ async function pageBatch(bid) {
           <p class="sub">${esc(keyLabel(key))} • ${fmtDate(b.created_at)} • ${badge(b.state)}</p></div>
         <div class="actions">
           ${firstReview ? `<a class="btn primary" href="#/sheet/${firstReview.id}">ابدأ المراجعة (${b.counts.REVIEW_REQUIRED})</a>` : ""}
-          <a class="btn" href="/api/batches/${bid}/export.xlsx">⬇ Excel</a>
-          <a class="btn" href="/api/batches/${bid}/export.pdf">⬇ PDF</a>
+          <a class="btn" href="/api/batches/${bid}/export.xlsx">${ICON.download} Excel</a>
+          <a class="btn" href="/api/batches/${bid}/export.pdf">${ICON.download} PDF</a>
         </div>
       </div>
       ${busy ? `<div class="card" style="margin-bottom:16px"><div class="row"><b>جارِ معالجة الملفات…</b><span class="spacer"></span>
@@ -274,7 +326,7 @@ async function pageBatch(bid) {
         ${shown.length ? `<div class="table-wrap"><table class="tbl"><thead><tr>
             <th>#</th><th>المرشح</th><th>الملف</th><th>الحالة</th><th>العلامة</th><th>الإجابات (س1 ← س${META.questions})</th><th>الملاحظات</th></tr></thead>
           <tbody>${shown.map((s) => sheetRow(s)).join("")}</tbody></table></div>`
-          : `<div class="empty">${busy ? "بانتظار النتائج…" : "لا توجد أوراق مطابقة"}</div>`}
+          : emptyState(ICON.search, `<p>${busy ? "بانتظار النتائج…" : "لا توجد أوراق مطابقة للبحث أو التصفية"}</p>`)}
       </div>`;
     $app.querySelectorAll("[data-filter]").forEach((el) => el.addEventListener("click", () => { filter = filter === el.dataset.filter ? "" : el.dataset.filter; render(); }));
     $app.querySelectorAll("[data-go]").forEach((tr) => tr.addEventListener("click", () => (location.hash = tr.dataset.go)));
@@ -282,7 +334,7 @@ async function pageBatch(bid) {
     q.addEventListener("input", () => { search = q.value; const pos = q.selectionStart; render(); const q2 = document.getElementById("q"); q2.focus(); q2.setSelectionRange(pos, pos); });
     document.getElementById("rekey").addEventListener("change", async (e) => {
       const k = keyById(e.target.value);
-      if (!confirm(`تغيير سلم التصحيح لكل أوراق الدفعة إلى:\n${keyLabel(k)}\nوإعادة حساب كل العلامات؟`)) { e.target.value = b.answer_key_id; return; }
+      if (!(await confirmDialog(`تغيير سلم التصحيح لكل أوراق الدفعة إلى:\n${keyLabel(k)}\nوإعادة حساب كل العلامات؟`, { ok: "تغيير وإعادة الحساب" }))) { e.target.value = b.answer_key_id; return; }
       try {
         await api(`/api/batches/${bid}/answer-key`, jsonOpts("POST", { answer_key_id: k.id, actor: reviewer() || null }));
         ({ b, sheets } = await load());
@@ -309,7 +361,7 @@ function sheetRow(s) {
     return `<span class="ans ${cls}" title="س${q}: ${esc(valueLabel(v))}">${esc(v ? (VALUE_AR[v] ? { BLANK: "–", MULTIPLE: "✱", UNCERTAIN: "?" }[v] : v) : "·")}</span>`;
   }).join("");
   const max = s.max_score || 100;
-  return `<tr data-go="#/sheet/${s.id}">
+  return `<tr data-go="#/sheet/${s.id}" tabindex="0">
     <td class="num muted">${s.id}</td>
     <td><b class="${s.candidate_name ? "" : "ltr"}">${esc(s.candidate_name || s.candidate_id)}</b>${s.candidate_name ? `<div class="small muted ltr">${esc(s.candidate_id)}</div>` : ""}</td>
     <td class="small muted"><span class="ltr">${esc(s.source_file)}</span>${s.page > 1 || /_p\d+$/.test(s.candidate_id || "") ? ` • ص${s.page}` : ""}</td>
@@ -325,20 +377,41 @@ async function pageSheet(sid) {
   let s = await api(`/api/sheets/${sid}`);
   let ovr = {};
   let view = "overlay";
+  let focusQ = null;       // question targeted by keyboard shortcuts
+  let scrollToFocus = false;
+
+  const qs = () => s.result.questions || [];
+  const finalOf = (qd) => (qd.q in ovr ? ovr[qd.q] || qd.detected : qd.override || qd.detected);
+  const needsDecision = (qd) => ["MULTIPLE", "UNCERTAIN"].includes(finalOf(qd));
+  const firstOpen = () => (qs().find(needsDecision) || null)?.q ?? null;
+  focusQ = firstOpen();
+  leaveGuard = () => Object.keys(ovr).length > 0;
+
+  // choose v for question q (null/"" = back to the machine reading)
+  const pick = (q, v) => {
+    const qd = qs().find((x) => x.q === q);
+    if (!qd) return;
+    const target = !v || v === qd.detected ? null : v;
+    if (target === (qd.override || null)) delete ovr[q]; else ovr[q] = target;
+    const next = qs().find((x) => x.q > q && needsDecision(x)) || qs().find(needsDecision);
+    focusQ = next ? next.q : q;
+    scrollToFocus = true;
+    render();
+  };
 
   const render = () => {
     const r = s.result;
     const key = keyById(r.answer_key_id) || keyById(s.batch.answer_key_id);
     const failed = r.status === "FAILED";
-    const qs = r.questions || [];
-    const finalOf = (qd) => (qd.q in ovr ? ovr[qd.q] || qd.detected : qd.override || qd.detected);
-    const unresolved = qs.filter((qd) => ["MULTIPLE", "UNCERTAIN"].includes(finalOf(qd)));
+    const unresolved = qs().filter(needsDecision);
     // live preview of score with pending overrides
     let preview = 0;
-    qs.forEach((qd) => { if (key && finalOf(qd) === key.answers[String(qd.q)]) preview += Number((key.scoring.question_scores || {})[qd.q] ?? key.scoring.question_score); });
+    qs().forEach((qd) => { if (key && finalOf(qd) === key.answers[String(qd.q)]) preview += Number((key.scoring.question_scores || {})[qd.q] ?? key.scoring.question_score); });
     const dirty = Object.keys(ovr).length > 0;
     const art = r.artifacts || {};
     const img = (k) => `/api/sheets/${sid}/image/${k}?v=${encodeURIComponent(s.updated_at)}`;
+    const resolved = (r.questions || []).filter((qd) => ["MULTIPLE", "UNCERTAIN"].includes(qd.detected) && !needsDecision(qd)).length;
+    const flagged = (r.questions || []).filter((qd) => ["MULTIPLE", "UNCERTAIN"].includes(qd.detected)).length;
 
     $app.innerHTML = `
       <div class="page-head">
@@ -346,15 +419,15 @@ async function pageSheet(sid) {
           <h1 class="${r.candidate_name ? "" : "ltr"}">${esc(r.candidate_name || r.candidate_id)}</h1>
           <p class="sub"><span class="ltr">${esc(r.source_file)}</span>${r.page > 1 ? " • صفحة " + r.page : ""} • ورقة ${s.nav.position} من ${s.nav.total} • متبقٍ للمراجعة: <b>${s.nav.review_left}</b></p></div>
         <div class="actions">
-          <a class="btn ${s.nav.prev ? "" : "disabled"}" ${s.nav.prev ? `href="#/sheet/${s.nav.prev}"` : ""}>→ السابقة</a>
-          <a class="btn ${s.nav.next ? "" : "disabled"}" ${s.nav.next ? `href="#/sheet/${s.nav.next}"` : ""}>التالية ←</a>
+          <a class="btn ${s.nav.prev ? "" : "disabled"}" ${s.nav.prev ? `href="#/sheet/${s.nav.prev}"` : ""} title="P">→ السابقة</a>
+          <a class="btn ${s.nav.next ? "" : "disabled"}" ${s.nav.next ? `href="#/sheet/${s.nav.next}"` : ""} title="N">التالية ←</a>
         </div>
       </div>
       <div class="review-grid">
         <section class="card viewer">
-          ${failed ? `<div class="empty"><div class="big">⚠️</div><p><b>لم يتم التعرف على الورقة</b><br>${esc(r.error || "")}</p>
+          ${failed ? emptyState(ICON.alert, `<p><b>لم يتم التعرف على الورقة</b><br>${esc(r.error || "")}</p>
               <p class="small">الحلول: أعد مسح الورقة كاملة بوضوح (بدون قص)، وتأكد أنها ورقة الإجابة المعتمدة، ثم ارفعها في دفعة جديدة.</p>
-              <a class="btn" href="${img("original")}" target="_blank">فتح الملف الأصلي</a></div>` : `
+              <a class="btn" href="${img("original")}" target="_blank">فتح الملف الأصلي</a>`) : `
           <div class="tabs chips">
             <button class="chip ${view === "overlay" ? "sel" : ""}" data-view="overlay">الورقة مع نتيجة التصحيح</button>
             <button class="chip ${view === "aligned" ? "sel" : ""}" data-view="aligned">الورقة بعد المحاذاة</button>
@@ -373,8 +446,10 @@ async function pageSheet(sid) {
         <section>
           <div class="card status-banner st-${esc(r.status)}">
             ${badge(r.status)}
-            <div class="small">${esc(STATUS_HELP[r.status] || "")}</div>
-            <div class="score num">${failed ? "—" : fmtScore(r.score)}<span class="muted" style="font-size:16px"> / ${fmtScore(r.max_score)}</span></div>
+            <div class="score num">${failed ? "—" : fmtScore(dirty ? preview : r.score)}<span class="muted" style="font-size:16px"> / ${fmtScore(r.max_score)}</span></div>
+            <div class="small" style="flex-basis:100%">${esc(STATUS_HELP[r.status] || "")}</div>
+            ${flagged ? `<div class="resolve" style="flex-basis:100%"><div class="row small"><b>الأسئلة المشكوك بها</b><span class="spacer"></span><span class="num">${resolved} / ${flagged}</span></div>
+              <div class="progress"><div style="width:${(100 * resolved) / flagged}%"></div></div></div>` : ""}
             ${(r.status_reasons || []).length ? `<ul class="reasons">${r.status_reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
           </div>
 
@@ -389,38 +464,42 @@ async function pageSheet(sid) {
 
           ${failed ? "" : `<div class="card">
             <div class="row" style="margin-bottom:6px"><h2 style="margin:0">الأسئلة</h2><span class="spacer"></span>
-              <span class="small muted">الشريط = نسبة تعبئة الدائرة • <span class="key-mark"></span> = إجابة سلم التصحيح • "تعديل…" لحسم السؤال يدوياً</span></div>
-            <table class="qtable"><thead><tr><th>س</th><th>نسب التعبئة</th><th>المكتشف</th><th>الصحيح</th><th>النهائي</th><th></th></tr></thead><tbody>
-            ${qs.map((qd) => {
+              <span class="small muted">اضغط على الخيار لاختياره يدوياً • <span class="key-mark"></span> = إجابة سلم التصحيح</span></div>
+            <div class="kbd-hint small muted">
+              <span><kbd>A</kbd>–<kbd>D</kbd> اختيار</span><span><kbd>0</kbd> فارغ</span><span><kbd>↑</kbd><kbd>↓</kbd> السؤال</span>
+              <span><kbd>Enter</kbd> اعتماد</span><span><kbd>Ctrl</kbd>+<kbd>S</kbd> حفظ</span><span><kbd>N</kbd>/<kbd>P</kbd> الورقة التالية/السابقة</span>
+            </div>
+            <table class="qtable"><thead><tr><th>س</th><th>الخيارات (نسبة التعبئة)</th><th>المكتشف</th><th>الصحيح</th><th>النهائي</th><th></th></tr></thead><tbody>
+            ${qs().map((qd) => {
               const fin = finalOf(qd), exp = key ? key.answers[String(qd.q)] : qd.expected;
               const ok = fin === exp, special = VALUE_AR[fin];
-              const attn = ["MULTIPLE", "UNCERTAIN"].includes(fin);
               const cur = qd.q in ovr ? ovr[qd.q] : qd.override;
-              return `<tr class="q ${attn ? "attn" : ""}">
+              return `<tr class="q ${needsDecision(qd) ? "attn" : ""} ${focusQ === qd.q ? "cur" : ""} ${cur ? "edited" : ""}" data-row="${qd.q}">
                 <td class="qnum num">${qd.q}</td>
                 <td><div class="fills">${META.options.map((o) => `
-                    <div class="fill ${qd.detected === o || (qd.detected in VALUE_AR && qd.fills[o] >= META.thresholds.classification.uncertain_min_fill) ? "sel" : ""} ${o === exp ? "exp" : ""} ${qd.shapes?.[o] === "strokes" ? "stroke" : ""}"
-                      title="${o}: تعبئة ${pct(qd.fills[o])}% • داخل الدائرة ${pct(qd.hole?.[o])}%${qd.shapes?.[o] === "strokes" ? " • شكل ✓/×" : ""}">
-                      <span class="o">${o}</span><span class="p num">${pct(qd.fills[o])}%</span><div class="bar"><i style="width:${pct(qd.fills[o])}%"></i></div></div>`).join("")}</div>
+                    <button type="button" data-q="${qd.q}" data-pick="${o}"
+                      class="fill ${qd.detected === o || (qd.detected in VALUE_AR && qd.fills[o] >= META.thresholds.classification.uncertain_min_fill) ? "sel" : ""} ${o === exp ? "exp" : ""} ${qd.shapes?.[o] === "strokes" ? "stroke" : ""} ${cur && fin === o ? "pick" : ""}"
+                      title="اختيار ${o} • تعبئة ${pct(qd.fills[o])}% • داخل الدائرة ${pct(qd.hole?.[o])}%${qd.shapes?.[o] === "strokes" ? " • شكل ✓/×" : ""}">
+                      <span class="o">${o}</span><span class="p num">${pct(qd.fills[o])}%</span><span class="bar"><i style="width:${pct(qd.fills[o])}%"></i></span></button>`).join("")}</div>
                   <div class="reason">${esc(qd.reason)}</div></td>
                 <td><span class="ans ${VALUE_AR[qd.detected] ? qd.detected : "neutral"}" title="${esc(VALUE_HELP[qd.detected] || "")}">${esc(valueLabel(qd.detected))}</span></td>
                 <td><span class="ans neutral">${esc(exp || "—")}</span></td>
                 <td><span class="ans ${special ? fin : ok ? "correct" : "wrong"}">${esc(valueLabel(fin))}</span></td>
-                <td><select class="ovr ${cur ? "set" : ""}" data-q="${qd.q}" aria-label="تعديل السؤال ${qd.q}">
-                    <option value="">${cur ? "↺ إلغاء التعديل" : "تعديل…"}</option>
-                    ${[...META.options, "BLANK"].map((o) => `<option value="${o}" ${cur === o ? "selected" : ""}>${o === "BLANK" ? "فارغ" : o}</option>`).join("")}
-                  </select></td></tr>`;
+                <td class="qact">
+                  <button type="button" class="btn sm ${cur && fin === "BLANK" ? "on" : ""}" data-q="${qd.q}" data-pick="BLANK" title="فارغ (0)">فارغ</button>
+                  ${cur ? `<button type="button" class="btn sm icon" data-q="${qd.q}" data-pick="" title="إلغاء التعديل والعودة للقراءة الآلية">${ICON.undo}</button>` : ""}
+                </td></tr>`;
             }).join("")}
             </tbody></table>
             <div class="review-actions">
-              <button class="btn" id="save">💾 حفظ</button>
+              <button class="btn" id="save">${ICON.save} حفظ</button>
               <button class="btn success" id="approve" ${unresolved.length ? "disabled" : ""}
-                title="${unresolved.length ? "احسم الأسئلة: " + unresolved.map((x) => x.q).join("، ") : "اعتماد الورقة"}">✔ اعتماد الورقة</button>
-              ${s.nav.next_review ? `<button class="btn primary" id="approveNext" ${unresolved.length ? "disabled" : ""}>✔ اعتماد والانتقال للتالية ←</button>` : ""}
+                title="${unresolved.length ? "احسم الأسئلة: " + unresolved.map((x) => x.q).join("، ") : "اعتماد الورقة"}">${ICON.check} اعتماد الورقة</button>
+              ${s.nav.next_review ? `<button class="btn primary" id="approveNext" ${unresolved.length ? "disabled" : ""}>${ICON.check} اعتماد والانتقال للتالية ←</button>` : ""}
               ${r.status === "MANUALLY_REVIEWED" ? `<button class="btn" id="reopen">↺ إعادة فتح المراجعة</button>` : ""}
               <span class="spacer"></span>
-              ${dirty ? `<span class="small" style="color:var(--review)">تعديلات غير محفوظة • العلامة بعد التعديل: <b class="num">${fmtScore(preview)}</b></span>` : ""}
-              ${unresolved.length ? `<span class="small" style="color:var(--review)">يجب حسم: ${unresolved.map((x) => "س" + x.q).join("، ")}</span>` : ""}
+              ${dirty ? `<span class="small pending">تعديلات غير محفوظة • العلامة بعد التعديل: <b class="num">${fmtScore(preview)}</b></span>` : ""}
+              ${unresolved.length ? `<span class="small pending">يجب حسم: ${unresolved.map((x) => "س" + x.q).join("، ")}</span>` : ""}
             </div>
           </div>`}
 
@@ -439,7 +518,7 @@ async function pageSheet(sid) {
               </dl>
               <div class="row" style="margin-top:10px">
                 <button class="btn sm" id="reprocess">⟳ إعادة المعالجة بالإعدادات الحالية</button>
-                <a class="btn sm" id="dljson" href="#">⬇ نتيجة الورقة JSON</a></div>
+                <a class="btn sm" id="dljson" href="#">${ICON.download} نتيجة الورقة JSON</a></div>
             </details>
           </div>
 
@@ -452,11 +531,17 @@ async function pageSheet(sid) {
     // events
     $app.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => { view = b.dataset.view; render(); }));
     $app.querySelectorAll("img.sheet, img[data-zoom]").forEach((im) => im.addEventListener("click", () => lightbox(im.src)));
-    $app.querySelectorAll("select.ovr").forEach((sel) => sel.addEventListener("change", () => {
-      const q = +sel.dataset.q, qd = qs.find((x) => x.q === q), v = sel.value || null;
-      if ((v || null) === (qd.override || null)) delete ovr[q]; else ovr[q] = v;
-      render();
+    $app.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); pick(+b.dataset.q, b.dataset.pick); }));
+    $app.querySelectorAll("tr[data-row]").forEach((tr) => tr.addEventListener("click", () => {
+      if (focusQ === +tr.dataset.row) return;
+      $app.querySelector("tr.q.cur")?.classList.remove("cur");
+      focusQ = +tr.dataset.row;
+      tr.classList.add("cur");
     }));
+    if (scrollToFocus) {
+      $app.querySelector("tr.q.cur")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      scrollToFocus = false;
+    }
     document.getElementById("actor")?.addEventListener("change", (e) => setReviewer(e.target.value.trim()));
     const save = async (extra = {}) => {
       const body = {
@@ -470,6 +555,7 @@ async function pageSheet(sid) {
       setReviewer(body.actor || "");
       s = await api(`/api/sheets/${sid}`, jsonOpts("PATCH", body));
       ovr = {};
+      focusQ = firstOpen() ?? focusQ;
       return s;
     };
     const wrap = (fn) => async () => { try { await fn(); } catch (e) { toast(e.message, true); } };
@@ -487,7 +573,10 @@ async function pageSheet(sid) {
     }));
     document.getElementById("reopen")?.addEventListener("click", wrap(async () => { await save({ reopen: true }); render(); toast("أعيد فتح المراجعة"); }));
     document.getElementById("reprocess")?.addEventListener("click", wrap(async () => {
+      if (!(await confirmDialog("إعادة قراءة هذه الورقة بالإعدادات الحالية؟\nستُستبدل القراءة الآلية، وتبقى التعديلات اليدوية في سجل التدقيق.", { ok: "إعادة المعالجة" }))) return;
       s = await api(`/api/sheets/${sid}/reprocess`, { method: "POST" });
+      ovr = {};
+      focusQ = firstOpen();
       render();
       toast("تمت إعادة المعالجة");
     }));
@@ -501,6 +590,35 @@ async function pageSheet(sid) {
       URL.revokeObjectURL(a.href);
     });
   };
+
+  // keyboard shortcuts (layout independent: e.code, so they also work on an Arabic keyboard)
+  const onKey = (e) => {
+    if (e.altKey || e.metaKey || document.querySelector("dialog[open]") || !document.getElementById("lightbox").hidden) return;
+    if (e.target.closest?.("input, select, textarea")) return;
+    const click = (id) => { const b = document.getElementById(id); if (b && !b.disabled) { b.click(); return true; } return false; };
+    if (e.ctrlKey) {
+      if (e.code === "KeyS") { e.preventDefault(); click("save"); }
+      return;
+    }
+    if (s.result.status === "FAILED") return;
+    const opts = { KeyA: "A", KeyB: "B", KeyC: "C", KeyD: "D", KeyE: "E", Digit0: "BLANK", Numpad0: "BLANK" };
+    const v = opts[e.code];
+    if (v && (v === "BLANK" || META.options.includes(v)) && focusQ !== null) { e.preventDefault(); pick(focusQ, v); return; }
+    if ((e.code === "ArrowDown" || e.code === "ArrowUp") && qs().length) {
+      e.preventDefault();
+      const i = qs().findIndex((x) => x.q === focusQ);
+      const j = Math.max(0, Math.min(qs().length - 1, (i < 0 ? 0 : i + (e.code === "ArrowDown" ? 1 : -1))));
+      focusQ = qs()[j].q;
+      scrollToFocus = true;
+      render();
+      return;
+    }
+    if (e.code === "Enter" && !e.target.closest?.("button, a, [data-go]")) { e.preventDefault(); click("approveNext") || click("approve"); return; }
+    if (e.code === "KeyN" && s.nav.next) location.hash = `#/sheet/${s.nav.next}`;
+    if (e.code === "KeyP" && s.nav.prev) location.hash = `#/sheet/${s.nav.prev}`;
+  };
+  document.addEventListener("keydown", onKey);
+  pageCleanup = () => document.removeEventListener("keydown", onKey);
   render();
 }
 
@@ -635,12 +753,42 @@ async function pageHelp() {
     </div>`;
 }
 
+// ------------------------------------------------------------------ sidebar
+// Desktop: inline sidebar, open/closed choice remembered. Phone: overlay drawer, always starts closed.
+(function sidebar() {
+  const mq = window.matchMedia("(max-width: 860px)");
+  const btn = document.getElementById("sidebarToggle");
+  const overlay = document.getElementById("sidebarOverlay");
+  const KEY = "omr-sidebar-open";
+  const set = (open) => {
+    document.body.classList.toggle("sidebar-open", open);
+    document.body.classList.toggle("sidebar-closed", !open);
+    btn.setAttribute("aria-expanded", String(open));
+    overlay.hidden = !(open && mq.matches);
+  };
+  const apply = () => {
+    let remembered = true;
+    try { remembered = localStorage.getItem(KEY) !== "0"; } catch { /* storage unavailable */ }
+    set(mq.matches ? false : remembered);
+  };
+  btn.addEventListener("click", () => {
+    const open = !document.body.classList.contains("sidebar-open");
+    if (!mq.matches) { try { localStorage.setItem(KEY, open ? "1" : "0"); } catch { /* ignore */ } }
+    set(open);
+  });
+  overlay.addEventListener("click", () => set(false));
+  document.getElementById("nav").addEventListener("click", (e) => { if (mq.matches && e.target.closest("a")) set(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && mq.matches) set(false); });
+  mq.addEventListener("change", apply);
+  apply();
+})();
+
 // ------------------------------------------------------------------ boot
 (async function boot() {
   try {
     [META, KEYS] = await Promise.all([api("/api/meta"), api("/api/keys")]);
   } catch (e) {
-    $app.innerHTML = `<div class="card empty"><div class="big">⚠️</div><p>تعذّر الاتصال بالخادم: ${esc(e.message)}</p></div>`;
+    $app.innerHTML = `<div class="card">${emptyState(ICON.alert, `<p>تعذّر الاتصال بالخادم: ${esc(e.message)}</p>`)}</div>`;
     return;
   }
   route();

@@ -3,24 +3,62 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>مصحّح OMR</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f5eff'/%3E%3Ccircle cx='11' cy='16' r='5' fill='white'/%3E%3Ccircle cx='22' cy='16' r='4' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+  <title>تصحيح أوراق الإجابة – وزارة الاقتصاد والصناعة</title>
+  <link rel="icon" type="image/png" href="/static/icon.png">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="#/">
-      <span class="logo" aria-hidden="true"><i></i><b></b></span>
-      <span><strong>مصحّح OMR</strong><small>تصحيح أوراق الإجابة آلياً</small></span>
-    </a>
-    <nav id="nav">
-      <a href="#/" data-nav="batches">الدفعات</a>
-      <a href="#/new" data-nav="new" class="primary-link">+ دفعة جديدة</a>
-      <a href="#/keys" data-nav="keys">سلالم التصحيح</a>
-      <a href="#/help" data-nav="help">دليل الحالات والإعدادات</a>
-    </nav>
+  <header class="site-header">
+    <div class="header-overlay" aria-hidden="true"></div>
+    <div class="header-inner">
+      <a class="header-brand" href="#/" aria-label="وزارة الاقتصاد والصناعة">
+        <span class="header-logo"><img src="/static/header-logo-ar.png" alt="وزارة الاقتصاد والصناعة"></span>
+      </a>
+      <span class="header-badge">الجمهورية العربية السورية</span>
+    </div>
   </header>
-  <main id="app" class="container"><div class="loading">جارِ التحميل…</div></main>
+
+  <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-controls="sidebar" aria-expanded="true" aria-label="القائمة">
+    <svg class="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    <svg class="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
+  <div class="sidebar-overlay" id="sidebarOverlay" hidden></div>
+
+  <div class="app-shell">
+    <aside class="app-sidebar" id="sidebar" aria-label="القائمة الجانبية">
+      <div class="app-sidebar-user">
+        <div class="app-sidebar-avatar" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>
+        </div>
+        <div class="app-sidebar-user-meta">
+          <span class="app-sidebar-name">تصحيح أوراق الإجابة</span>
+          <span class="app-sidebar-role">نظام OMR للمعاهد</span>
+        </div>
+      </div>
+      <nav class="app-sidebar-nav" id="nav">
+        <a class="app-sidebar-link" href="#/" data-nav="batches">
+          <span class="app-sidebar-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></span>
+          <span class="app-sidebar-label">الدفعات</span>
+        </a>
+        <a class="app-sidebar-link" href="#/new" data-nav="new">
+          <span class="app-sidebar-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M12 3v13"/><path d="m7 8 5-5 5 5"/></svg></span>
+          <span class="app-sidebar-label">دفعة جديدة</span>
+        </a>
+        <a class="app-sidebar-link" href="#/keys" data-nav="keys">
+          <span class="app-sidebar-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h10a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H9"/><path d="M4 7h3M4 12h3M4 17h3"/><path d="m11 9 1.5 1.5L15 8M11 15h5"/></svg></span>
+          <span class="app-sidebar-label">سلالم التصحيح</span>
+        </a>
+        <a class="app-sidebar-link" href="#/help" data-nav="help">
+          <span class="app-sidebar-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.9.7c0 1.7-2.4 2.3-2.4 3.8"/><path d="M12 17h.01"/></svg></span>
+          <span class="app-sidebar-label">دليل الحالات والإعدادات</span>
+        </a>
+      </nav>
+      <div class="app-sidebar-foot">وزارة الاقتصاد والصناعة</div>
+    </aside>
+
+    <main id="app" class="app-main container"><div class="loading">جارِ التحميل…</div></main>
+  </div>
+
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="lightbox" hidden><img alt=""><button class="btn" data-close>إغلاق ✕</button></div>
   <script src="/static/app.js"></script>
