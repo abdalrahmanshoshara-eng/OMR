@@ -883,7 +883,7 @@ async function pageKeys(editId) {
   KEYS = await api("/api/keys");
   $app.innerHTML = `
     <div class="page-head"><div><h1>سلالم التصحيح</h1>
-      <p class="sub">كل سلم تصحيح ملف JSON مستقل في <code>config/answer_keys/</code> — يمكن إضافة امتحان أو اختصاص جديد دون تعديل الكود.</p></div>
+      </div>
       <div class="actions"><button class="btn primary" id="newKey">+ سلم تصحيح جديد</button></div></div>
     <div id="formHost"></div>
     <div class="keys">${KEYS.map((k) => `
