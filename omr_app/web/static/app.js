@@ -67,8 +67,135 @@ function keyOptions(selected) {
   KEYS.forEach((k) => (byExam[k.exam] = byExam[k.exam] || []).push(k));
   return Object.entries(byExam).map(([exam, ks]) =>
     `<optgroup label="${esc(exam)}">${ks.map((k) =>
-      `<option value="${esc(k.id)}" ${k.id === selected ? "selected" : ""}>${esc(k.specialization_label_ar || k.specialization)}${k.specialization_label ? " — " + esc(k.specialization_label) : ""}</option>`).join("")}</optgroup>`).join("");
+      `<option value="${esc(k.id)}" ${k.id === selected ? "selected" : ""} data-main="${esc(k.specialization_label_ar || k.specialization)}" data-sub="${esc(k.specialization_label || "")}">${esc(k.specialization_label_ar || k.specialization)}${k.specialization_label ? " — " + esc(k.specialization_label) : ""}</option>`).join("")}</optgroup>`).join("");
 }
+
+// ------------------------------------------------------------------ custom dropdown
+// Wraps a native <select> (kept, hidden) with a styled, searchable list. The select stays the source of truth:
+// forms submit it, and choosing an item sets its value and fires a normal "change" event.
+const CHEVRON = () => svgIcon('<path d="m6 9 6 6 6-6"/>', 18);
+const TICK = () => svgIcon('<path d="M20 6 9 17l-5-5"/>', 16);
+function enhanceSelect(sel) {
+  if (sel._dd) return;
+  const dd = document.createElement("div");
+  dd.className = "dd";
+  sel.replaceWith(dd);
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "dd-btn";
+  btn.setAttribute("aria-haspopup", "listbox");
+  btn.setAttribute("aria-expanded", "false");
+  const panel = document.createElement("div");
+  panel.className = "dd-panel";
+  panel.hidden = true;
+  const searchable = sel.options.length > 6;
+  panel.innerHTML = `${searchable ? `<div class="dd-search">${svgIcon('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>', 16)}<input type="text" placeholder="بحث…" aria-label="بحث"></div>` : ""}<div class="dd-list" role="listbox"></div>`;
+  sel.classList.add("dd-native");
+  sel.tabIndex = -1;
+  dd.append(btn, sel, panel);
+  const list = panel.querySelector(".dd-list"), search = panel.querySelector("input");
+  const text = (o) => ({ main: o.dataset.main || o.textContent, sub: o.dataset.sub || "" });
+  let active = -1;
+
+  const sync = () => {
+    const o = sel.selectedOptions[0];
+    const t = o ? text(o) : { main: "—", sub: "" };
+    btn.innerHTML = `<span class="dd-val"><b>${esc(t.main)}</b>${t.sub ? `<small>${esc(t.sub)}</small>` : ""}</span>${CHEVRON()}`;
+  };
+  const items = () => [...list.querySelectorAll(".dd-item:not([hidden])")];
+  const setActive = (i) => {
+    const its = items();
+    if (!its.length) return;
+    active = (i + its.length) % its.length;
+    its.forEach((el, j) => el.classList.toggle("act", j === active));
+    its[active].scrollIntoView({ block: "nearest" });
+  };
+  const build = () => {
+    const opt = (o) => {
+      const t = text(o);
+      return `<div class="dd-item ${o.selected ? "sel" : ""}" role="option" aria-selected="${o.selected}" data-v="${esc(o.value)}" data-s="${esc((t.main + " " + t.sub).toLowerCase())}">
+        <span class="dd-txt"><b>${esc(t.main)}</b>${t.sub ? `<small>${esc(t.sub)}</small>` : ""}</span><span class="dd-tick">${o.selected ? TICK() : ""}</span></div>`;
+    };
+    list.innerHTML = [...sel.children].map((c) => c.tagName === "OPTGROUP"
+      ? `<div class="dd-group" data-g="${esc(c.label.toLowerCase())}"><div class="dd-glabel">${esc(c.label)}</div>${[...c.children].map(opt).join("")}</div>`
+      : opt(c)).join("");
+  };
+  const filter = () => {
+    const q = (search?.value || "").trim().toLowerCase();
+    list.querySelectorAll(".dd-group").forEach((g) => {
+      const gHit = q && g.dataset.g.includes(q);
+      let any = false;
+      g.querySelectorAll(".dd-item").forEach((it) => { it.hidden = !!q && !gHit && !it.dataset.s.includes(q); any ||= !it.hidden; });
+      g.hidden = !any;
+    });
+    list.querySelectorAll(":scope > .dd-item").forEach((it) => (it.hidden = !!q && !it.dataset.s.includes(q)));
+    const empty = !items().length;
+    list.querySelector(".dd-empty")?.remove();
+    if (empty) list.insertAdjacentHTML("beforeend", `<div class="dd-empty">لا توجد نتائج</div>`);
+    setActive(Math.max(0, items().findIndex((el) => el.classList.contains("sel"))));
+  };
+  const open = () => {
+    document.querySelectorAll(".dd.open").forEach((x) => x !== dd && x._close?.());
+    build();
+    if (search) search.value = "";
+    panel.hidden = false;
+    dd.classList.add("open");
+    btn.setAttribute("aria-expanded", "true");
+    filter();
+    // always opens downwards; scroll the page so the whole list is visible
+    if (panel.getBoundingClientRect().bottom > window.innerHeight) panel.scrollIntoView({ block: "end", behavior: "smooth" });
+    (search || btn).focus();
+  };
+  const close = (refocus) => {
+    if (panel.hidden) return;
+    panel.hidden = true;
+    dd.classList.remove("open");
+    btn.setAttribute("aria-expanded", "false");
+    if (refocus) btn.focus();
+  };
+  const choose = (v) => {
+    close(true);
+    if (sel.value === v) return;
+    sel.value = v;
+    sync();
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  dd._close = () => close(false);
+  sel._sync = sync;
+  sel._dd = dd;
+
+  btn.addEventListener("click", () => (panel.hidden ? open() : close(true)));
+  // preventDefault stops a wrapping <label> from re-clicking the button
+  panel.addEventListener("click", (e) => {
+    e.preventDefault();
+    const it = e.target.closest(".dd-item");
+    if (it) choose(it.dataset.v);
+  });
+  panel.addEventListener("mousemove", (e) => {
+    const it = e.target.closest(".dd-item");
+    if (it) { const i = items().indexOf(it); if (i !== active) setActive(i); }
+  });
+  search?.addEventListener("input", filter);
+  dd.addEventListener("keydown", (e) => {
+    const isOpen = !panel.hidden;
+    if (!isOpen) {
+      if (["ArrowDown", "ArrowUp"].includes(e.key) || (e.target === btn && (e.key === "Enter" || e.key === " "))) { e.preventDefault(); e.stopPropagation(); open(); }
+      return;
+    }
+    e.stopPropagation();
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive(active + 1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive(active - 1); }
+    else if (e.key === "Enter") { e.preventDefault(); const it = items()[active]; if (it) choose(it.dataset.v); }
+    else if (e.key === "Escape") { e.preventDefault(); close(true); }
+    else if (e.key === "Tab") close(false);
+  });
+  sel.addEventListener("change", sync);
+  sync();
+}
+document.addEventListener("mousedown", (e) => { document.querySelectorAll(".dd.open").forEach((dd) => { if (!dd.contains(e.target)) dd._close(); }); });
+// every <select> rendered into the page gets the custom dropdown
+new MutationObserver(() => document.querySelectorAll("#app select:not(.dd-native):not([data-native])").forEach(enhanceSelect))
+  .observe(document.getElementById("app"), { childList: true, subtree: true });
 
 function lightbox(src) {
   const lb = document.getElementById("lightbox");
@@ -334,7 +461,7 @@ async function pageBatch(bid) {
     q.addEventListener("input", () => { search = q.value; const pos = q.selectionStart; render(); const q2 = document.getElementById("q"); q2.focus(); q2.setSelectionRange(pos, pos); });
     document.getElementById("rekey").addEventListener("change", async (e) => {
       const k = keyById(e.target.value);
-      if (!(await confirmDialog(`تغيير سلم التصحيح لكل أوراق الدفعة إلى:\n${keyLabel(k)}\nوإعادة حساب كل العلامات؟`, { ok: "تغيير وإعادة الحساب" }))) { e.target.value = b.answer_key_id; return; }
+      if (!(await confirmDialog(`تغيير سلم التصحيح لكل أوراق الدفعة إلى:\n${keyLabel(k)}\nوإعادة حساب كل العلامات؟`, { ok: "تغيير وإعادة الحساب" }))) { e.target.value = b.answer_key_id; e.target._sync?.(); return; }
       try {
         await api(`/api/batches/${bid}/answer-key`, jsonOpts("POST", { answer_key_id: k.id, actor: reviewer() || null }));
         ({ b, sheets } = await load());
@@ -693,7 +820,9 @@ async function pageKeys(editId) {
     const f = document.getElementById("kf");
     const slug = () => { if (isNew && f.exam.value && f.specialization.value) f.id.value = (f.exam.value.toLowerCase().replace(/[^a-z0-9]+/g, "_") + "_" + f.specialization.value).replace(/^_+|_+$/g, ""); };
     const renderQs = () => {
-      document.getElementById("qhost").innerHTML = answers.map((a, i) => `<label>السؤال ${i + 1}<select data-i="${i}">${META.options.map((o) => `<option ${a === o ? "selected" : ""}>${o}</option>`).join("")}</select></label>`).join("");
+      document.getElementById("qhost").innerHTML = answers.map((a, i) => `<div class="qpick"><span class="num">${i + 1}</span>
+        <div class="seg" role="radiogroup" aria-label="السؤال ${i + 1}">${META.options.map((o) =>
+          `<button type="button" role="radio" aria-checked="${a === o}" class="${a === o ? "on" : ""}" data-i="${i}" data-o="${o}">${o}</button>`).join("")}</div></div>`).join("");
       f.qcount.value = answers.length;
       document.getElementById("qwarn").textContent = answers.length === META.questions ? "" :
         `تنبيه: ورقة الإجابة المطبوعة الحالية فيها ${META.questions} أسئلة فقط. الأوراق المصححة بهذا السلم ستُحوَّل إلى المراجعة لأن عدد الأسئلة مختلف.`;
@@ -705,7 +834,12 @@ async function pageKeys(editId) {
       renderQs();
     };
     renderQs();
-    document.getElementById("qhost").addEventListener("change", (e) => { if (e.target.dataset.i !== undefined) answers[+e.target.dataset.i] = e.target.value; });
+    document.getElementById("qhost").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-o]");
+      if (!b) return;
+      answers[+b.dataset.i] = b.dataset.o;
+      b.parentElement.querySelectorAll("button").forEach((x) => { x.classList.toggle("on", x === b); x.setAttribute("aria-checked", String(x === b)); });
+    });
     f.qcount.addEventListener("change", () => setCount(+f.qcount.value));
     document.getElementById("addQ").onclick = () => setCount(answers.length + 1);
     document.getElementById("delQ").onclick = () => setCount(answers.length - 1);

@@ -544,3 +544,66 @@ button.fill:active { transform: translateY(1px); }
 .status-banner.st-FAILED { background: var(--fail-soft); }
 .status-banner > .small { color: var(--text); opacity: .85; }
 .resolve .progress { margin-top: 4px; background: rgba(255, 255, 255, .7); }
+
+/* ---------- custom dropdown (wraps a hidden native <select>) */
+.dd { position: relative; min-width: 0; font-weight: 500; }
+.dd-native { position: absolute !important; width: 1px; height: 1px; opacity: 0; pointer-events: none; inset-inline-start: 0; bottom: 0; }
+.dd-btn {
+  width: 100%; min-height: 44px; display: flex; align-items: center; gap: 10px; cursor: pointer; text-align: start;
+  padding: 8px 14px; font: inherit; font-size: 14px; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  transition: border-color .14s var(--ease), box-shadow .14s var(--ease), background .14s var(--ease);
+}
+.dd-btn:hover { border-color: var(--border-hard); background: var(--surface); }
+.dd.open .dd-btn, .dd-btn:focus-visible { outline: none; background: var(--surface); border-color: var(--green-mid); box-shadow: 0 0 0 3px rgba(14, 109, 92, .12); }
+.dd-btn > svg { flex-shrink: 0; color: var(--muted); transition: transform .2s var(--ease); }
+.dd.open .dd-btn > svg { transform: rotate(180deg); color: var(--green-mid); }
+.dd-val { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; white-space: nowrap; }
+.dd-val b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+.dd-val small { color: var(--soft); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; direction: ltr; unicode-bidi: isolate; }
+
+.dd-panel {
+  position: absolute; z-index: 40; inset-inline: 0; top: calc(100% + 6px); min-width: 280px;
+  background: var(--surface); border: 1px solid var(--gold-border); border-radius: var(--r-lg);
+  box-shadow: 0 2px 6px rgba(10, 47, 40, .08), 0 22px 48px -18px rgba(4, 48, 42, .45);
+  overflow: hidden; animation: ddIn .14s var(--ease);
+}
+@keyframes ddIn { from { opacity: 0; transform: translateY(-4px); } }
+.dd-search { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--soft); background: var(--surface-sunken); }
+.dd-search input { flex: 1; border: 0; background: transparent; padding: 4px 2px; box-shadow: none; font-size: 14px; }
+.dd-search input:focus, .dd-search input:hover { border: 0; box-shadow: none; background: transparent; }
+.dd-list { max-height: 320px; overflow-y: auto; padding: 6px; overscroll-behavior: contain; }
+.dd-group + .dd-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+.dd-glabel {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px;
+  font-size: 12px; font-weight: 800; color: var(--gold-ink); letter-spacing: .01em;
+}
+.dd-glabel::before { content: ""; width: 3px; height: 13px; border-radius: 999px; background: linear-gradient(180deg, var(--gold-hover), var(--gold)); }
+.dd-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px; margin: 1px 0; border-radius: var(--r-sm); cursor: pointer;
+  color: var(--text); transition: background .1s;
+}
+.dd-item.act { background: var(--gold-wash); }
+.dd-item.sel { background: var(--green-wash); }
+.dd-item.sel.act { background: rgba(14, 109, 92, .12); }
+.dd-txt { flex: 1; min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.dd-txt b { font-weight: 700; font-size: 14px; }
+.dd-txt small { color: var(--soft); font-size: 12.5px; direction: ltr; unicode-bidi: isolate; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dd-item.sel .dd-txt b { color: var(--green-header); font-weight: 800; }
+.dd-tick { width: 18px; flex-shrink: 0; color: var(--green-mid); display: grid; place-items: center; }
+.dd-empty { padding: 18px; text-align: center; color: var(--muted); font-size: 13.5px; }
+@media (max-width: 640px) { .dd-txt { flex-direction: column; gap: 0; } .dd-panel { min-width: 0; } }
+
+/* ---------- answer-key editor: A–D segmented choice per question */
+.key-form-answers { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.qpick { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--r-md); background: var(--surface-sunken); border: 1px solid var(--border); }
+.qpick > span { min-width: 26px; text-align: center; font-weight: 900; color: var(--green-header); }
+.seg { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(30px, 1fr)); gap: 3px; direction: ltr; }
+.seg button {
+  height: 32px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer;
+  font: inherit; font-weight: 800; font-size: 13.5px; color: var(--muted); transition: background .12s, color .12s, border-color .12s;
+}
+.seg button:hover { border-color: var(--gold); color: var(--green-header); background: var(--gold-wash); }
+.seg button.on { background: linear-gradient(135deg, var(--green-mid), var(--green-header)); border-color: var(--green-header); color: var(--invert); }
+label.row .dd { min-width: 300px; }
+.dd-item[hidden], .dd-group[hidden] { display: none; }
