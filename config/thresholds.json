@@ -11,7 +11,7 @@
     "faint_hole_darkness": "Safety net: if the mean darkness inside a printed O exceeds the sheet paper_level by >= faint_hole_darkness and no option of the question is clearly marked, the question is UNCERTAIN (never silently BLANK). Faint residue next to a clear mark (erasure) is ignored.",
     "multiple_mark_fill": "If two or more options are MARKED and the second has fill >= multiple_mark_fill the question is MULTIPLE.",
     "ambiguity_gap": "If the top option is marked but (top fill - second fill) < ambiguity_gap the question is UNCERTAIN.",
-    "review": "review_on_blank: send sheets with any BLANK question to review. review_on_all_blank: send completely blank sheets to review. review_on_low_alignment: send sheets whose bubble positions could not be verified to review. fail_on_unverified_alignment (default true, takes precedence): mark such sheets FAILED instead, so no answers read from unverified positions are ever shown."
+    "review": "review_on_blank: send sheets with any BLANK question to review. review_on_all_blank: send completely blank sheets to review. review_on_low_alignment: send sheets whose bubble positions could not be verified to review. fail_on_unverified_alignment (default true, takes precedence): mark such sheets FAILED instead, so no answers read from unverified positions are ever shown. blank_not_allowed: a blank answer is never accepted - any BLANK question (detected or entered) sends the sheet to review, and the sheet can only be approved after a letter is chosen for it."
   },
   "image": {
     "pdf_render_dpi": 200,
@@ -40,6 +40,7 @@
   },
   "review": {
     "review_on_blank": false,
+    "blank_not_allowed": true,
     "review_on_all_blank": true,
     "review_on_low_alignment": true,
     "fail_on_unverified_alignment": true

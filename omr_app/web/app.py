@@ -359,7 +359,8 @@ def review_sheet(sid: int, body: ReviewIn):
     key = _key(body.answer_key_id or r.get("answer_key_id"))
     if key["id"] != r.get("answer_key_id"):
         changes["answer_key_id"] = {"from": r.get("answer_key_id"), "to": key["id"]}
-    allowed = set(grader.layout.options) | {"BLANK"}
+    no_blank = grader.thresholds.get("review", {}).get("blank_not_allowed", False)
+    allowed = set(grader.layout.options) | (set() if no_blank else {"BLANK"})
     if body.overrides:
         if not r.get("questions"):
             raise HTTPException(400, "this sheet could not be read (FAILED); answers cannot be overridden")
@@ -369,7 +370,7 @@ def review_sheet(sid: int, body: ReviewIn):
                 raise HTTPException(400, f"unknown question {q}")
             v = (v or "").strip().upper() or None
             if v is not None and v not in allowed:
-                raise HTTPException(400, f"invalid answer '{v}' for Q{q}")
+                raise HTTPException(400, f"السؤال {q}: لا يُسمح بإجابة فارغة، اختر أحد الخيارات" if v == "BLANK" else f"invalid answer '{v}' for Q{q}")
             if v == by_q[q]["detected"]:
                 v = None  # same as detection -> no override
             if v != by_q[q].get("override"):
@@ -383,9 +384,10 @@ def review_sheet(sid: int, body: ReviewIn):
         r["reviewed"] = r.get("reviewed", False) and not body.reopen
         grader.finalize(r, key)
         if body.approve:
-            unresolved = [f"Q{qd['q']}" for qd in r["questions"] if qd["final"] in ("MULTIPLE", "UNCERTAIN")]
+            open_values = ("MULTIPLE", "UNCERTAIN", "BLANK") if no_blank else ("MULTIPLE", "UNCERTAIN")
+            unresolved = [f"س{qd['q']}" for qd in r["questions"] if qd["final"] in open_values]
             if unresolved:
-                raise HTTPException(400, f"resolve {', '.join(unresolved)} (choose A-D or BLANK) before approving")
+                raise HTTPException(400, f"يجب حسم الأسئلة قبل الاعتماد: {'، '.join(unresolved)}")
             r["reviewed"] = True
             r["reviewed_by"] = body.actor
             r["reviewed_at"] = time.time()

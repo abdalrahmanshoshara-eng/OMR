@@ -633,3 +633,12 @@ label.row .dd { min-width: 300px; }
 .fill.sug .o { color: var(--gold-ink); }
 .qact .btn.success { min-height: 30px; }
 .qact .btn.success.close-call { background: linear-gradient(135deg, #b98a2a, #8a6413); border-color: #8a6413; }
+
+/* review: blank answers are not allowed -> whole-sheet warning */
+.blank-alert {
+  flex-basis: 100%; display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-md);
+  background: var(--fail-soft); border: 1px solid rgba(184, 54, 42, .35); color: var(--fail); font-size: 13.5px; line-height: 1.7;
+}
+.blank-alert svg { width: 26px; height: 26px; flex-shrink: 0; margin-top: 2px; }
+.blank-alert b { font-size: 14.5px; }
+.blank-alert div div { color: var(--text); }

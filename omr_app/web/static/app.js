@@ -15,7 +15,7 @@ const STATUS_HELP = {
 };
 const VALUE_AR = { BLANK: "فارغ", MULTIPLE: "متعدد", UNCERTAIN: "غير واضح" };
 const VALUE_HELP = {
-  BLANK: "لم تُظلَّل أي دائرة.",
+  BLANK: "لم تُظلَّل أي دائرة. الإجابة الفارغة غير مسموحة: تُحوَّل الورقة للمراجعة ويجب اختيار إجابة يدوياً.",
   MULTIPLE: "ظُلِّلت دائرتان أو أكثر بوضوح. لا يتم التخمين.",
   UNCERTAIN: "علامة جزئية أو باهتة أو إشارة ✓ / ×. لا يتم التخمين.",
 };
@@ -611,7 +611,9 @@ async function pageSheet(sid) {
 
   const qs = () => s.result.questions || [];
   const finalOf = (qd) => (qd.q in ovr ? ovr[qd.q] || qd.detected : qd.override || qd.detected);
-  const needsDecision = (qd) => ["MULTIPLE", "UNCERTAIN"].includes(finalOf(qd));
+  // values a reviewer must replace with a letter (blank too, when blank answers are not allowed)
+  const OPEN = META.thresholds.review?.blank_not_allowed ? ["MULTIPLE", "UNCERTAIN", "BLANK"] : ["MULTIPLE", "UNCERTAIN"];
+  const needsDecision = (qd) => OPEN.includes(finalOf(qd));
   const firstOpen = () => (qs().find(needsDecision) || null)?.q ?? null;
   focusQ = firstOpen();
   leaveGuard = () => Object.keys(ovr).length > 0;
@@ -646,8 +648,9 @@ async function pageSheet(sid) {
     const dirty = Object.keys(ovr).length > 0;
     const art = r.artifacts || {};
     const img = (k) => `/api/sheets/${sid}/image/${k}?v=${encodeURIComponent(s.updated_at)}`;
-    const resolved = (r.questions || []).filter((qd) => ["MULTIPLE", "UNCERTAIN"].includes(qd.detected) && !needsDecision(qd)).length;
-    const flagged = (r.questions || []).filter((qd) => ["MULTIPLE", "UNCERTAIN"].includes(qd.detected)).length;
+    const resolved = (r.questions || []).filter((qd) => OPEN.includes(qd.detected) && !needsDecision(qd)).length;
+    const flagged = (r.questions || []).filter((qd) => OPEN.includes(qd.detected)).length;
+    const blanks = OPEN.includes("BLANK") ? (r.questions || []).filter((qd) => qd.detected === "BLANK") : [];
 
     $app.innerHTML = `
       <div class="page-head">
@@ -685,6 +688,8 @@ async function pageSheet(sid) {
             ${badge(r.status)}
             <div class="score num">${failed ? "—" : fmtScore(dirty ? preview : r.score)}<span class="muted" style="font-size:16px"> / ${fmtScore(r.max_score)}</span></div>
             <div class="small" style="flex-basis:100%">${esc(STATUS_HELP[r.status] || "")}</div>
+            ${blanks.length ? `<div class="blank-alert" role="alert">${ICON.alert}<div><b>تنبيه: يوجد ${blanks.length === 1 ? "سؤال فارغ" : blanks.length === 2 ? "سؤالان فارغان" : blanks.length <= 10 ? blanks.length + " أسئلة فارغة" : blanks.length + " سؤالاً فارغاً"} (${blanks.map((x) => "س" + x.q).join("، ")})</b>
+              <div>الإجابة الفارغة غير مسموحة. يجب مراجعة الورقة كاملةً والتأكد من الإجابات يدوياً قبل الاعتماد.</div></div></div>` : ""}
             ${flagged ? `<div class="resolve" style="flex-basis:100%"><div class="row small"><b>الأسئلة المشكوك بها</b><span class="spacer"></span><span class="num">${resolved} / ${flagged}</span></div>
               <div class="progress"><div style="width:${(100 * resolved) / flagged}%"></div></div></div>` : ""}
             ${(r.status_reasons || []).length ? `<ul class="reasons">${r.status_reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
@@ -703,7 +708,7 @@ async function pageSheet(sid) {
             <div class="row" style="margin-bottom:6px"><h2 style="margin:0">الأسئلة</h2><span class="spacer"></span>
               <span class="small muted">اضغط على الخيار لاختياره يدوياً • <span class="key-mark"></span> = إجابة سلم التصحيح</span></div>
             <div class="kbd-hint small muted">
-              <span><kbd>A</kbd>–<kbd>D</kbd> اختيار</span><span><kbd>Space</kbd> تم (الاقتراح)</span><span><kbd>0</kbd> فارغ</span><span><kbd>↑</kbd><kbd>↓</kbd> السؤال</span>
+              <span><kbd>A</kbd>–<kbd>D</kbd> اختيار</span><span><kbd>Space</kbd> تم (الاقتراح)</span><span><kbd>↑</kbd><kbd>↓</kbd> السؤال</span>
               <span><kbd>Enter</kbd> اعتماد</span><span><kbd>Ctrl</kbd>+<kbd>S</kbd> حفظ</span><span><kbd>N</kbd>/<kbd>P</kbd> الورقة التالية/السابقة</span>
             </div>
             <table class="qtable"><thead><tr><th>س</th><th>الخيارات (نسبة التعبئة)</th><th>المكتشف</th><th>الصحيح</th><th>النهائي</th><th></th></tr></thead><tbody>
@@ -823,9 +828,9 @@ async function pageSheet(sid) {
       return;
     }
     if (s.result.status === "FAILED") return;
-    const opts = { KeyA: "A", KeyB: "B", KeyC: "C", KeyD: "D", KeyE: "E", Digit0: "BLANK", Numpad0: "BLANK" };
+    const opts = { KeyA: "A", KeyB: "B", KeyC: "C", KeyD: "D", KeyE: "E", };
     const v = opts[e.code];
-    if (v && (v === "BLANK" || META.options.includes(v)) && focusQ !== null) { e.preventDefault(); pick(focusQ, v); return; }
+    if (v && META.options.includes(v) && focusQ !== null) { e.preventDefault(); pick(focusQ, v); return; }
     if (e.code === "Space" && !e.target.closest?.("button, a")) {
       const qd = qs().find((x) => x.q === focusQ);
       if (qd && needsDecision(qd)) { e.preventDefault(); pick(qd.q, suggest(qd)); }

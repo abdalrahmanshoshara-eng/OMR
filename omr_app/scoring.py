@@ -57,11 +57,13 @@ def score_questions(questions: list, answer_key: dict) -> dict:
 def sheet_status(questions: list, review_cfg: dict, low_alignment: bool):
     """AUTO_APPROVED only when every question has a clear decision."""
     reasons = []
+    no_blank = review_cfg.get("blank_not_allowed", False)
     for qd in questions:
         final = qd.get("override") or qd["detected"]
         if final in (MULTIPLE, UNCERTAIN):
             reasons.append(f"Q{qd['q']}: {final}")
-        elif final == BLANK and review_cfg.get("review_on_blank") and not qd.get("override"):
+        elif final == BLANK and (no_blank or (review_cfg.get("review_on_blank") and not qd.get("override"))):
+            # blank_not_allowed: every question must end with a letter, so a blank always needs a human
             reasons.append(f"Q{qd['q']}: BLANK")
     if questions and review_cfg.get("review_on_all_blank", True) and all(
         (qd.get("override") or qd["detected"]) == BLANK for qd in questions

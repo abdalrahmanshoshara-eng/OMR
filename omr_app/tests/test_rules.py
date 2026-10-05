@@ -108,6 +108,21 @@ def test_all_blank_sheet_goes_to_review():
     assert sheet_status(qs, {"review_on_blank": False, "review_on_all_blank": True}, False)[0] == REVIEW_REQUIRED
 
 
+def test_blank_not_allowed_sends_sheet_to_review_until_a_letter_is_chosen():
+    cfg = {"review_on_blank": False, "blank_not_allowed": True}
+    qs = _qs(["A"] * 9 + [BLANK])
+    status, reasons = sheet_status(qs, cfg, False)
+    assert status == REVIEW_REQUIRED and reasons == ["Q10: BLANK"]
+    qs[-1]["override"] = "C"  # reviewer chose a letter
+    assert sheet_status(qs, cfg, False)[0] == AUTO_APPROVED
+    qs[-1]["override"] = BLANK  # a blank entered by hand is still not accepted
+    assert sheet_status(qs, cfg, False)[0] == REVIEW_REQUIRED
+
+
+def test_blank_allowed_by_default():
+    assert sheet_status(_qs(["A"] * 9 + [BLANK]), {"review_on_blank": False}, False)[0] == AUTO_APPROVED
+
+
 def test_answer_key_any_question_count():
     ans = {str(i): "A" for i in range(1, 16)}
     k = validate_answer_key({"id": "x_15", "exam": "e", "specialization": "s", "answers": ans}, 10, list("ABCD"))
