@@ -741,27 +741,8 @@ async function pageSheet(sid) {
               ${unresolved.length ? `<span class="small pending">يجب حسم: ${unresolved.map((x) => "س" + x.q).join("، ")}</span>` : ""}
             </div>
           </div>`}
-
-          <div class="card">
-            <details class="tech"><summary>تفاصيل تقنية (المحاذاة، الحبر، الإعدادات)</summary>
-              <dl class="kv">
-                <dt>المحاذاة</dt><dd>${r.alignment?.ok ? "ناجحة" : "فشلت"} ${r.alignment?.low_confidence ? "(ثقة منخفضة)" : ""}</dd>
-                <dt>نقاط التطابق (inliers)</dt><dd class="num">${r.alignment?.inliers ?? "—"} / ${r.alignment?.good_matches ?? "—"}</dd>
-                <dt>الدوران</dt><dd class="num">${r.alignment?.rotation_deg ?? "—"}°</dd>
-                <dt>المقياس</dt><dd class="num">${r.alignment?.scale ?? "—"}</dd>
-                <dt>دوائر مطابقة للقالب</dt><dd class="num">${r.alignment?.glyph_matches ?? "—"} / 40 (خطأ ${r.alignment?.residual_px ?? "—"} px)</dd>
-                <dt>مستوى الورق / الحبر</dt><dd class="num">${r.ink?.paper_level ?? "—"} / ${r.ink?.ink_level ?? "—"} (عتبة ${r.ink?.pixel_threshold ?? "—"})</dd>
-                <dt>أبعاد الصورة</dt><dd class="num">${r.image?.width ?? "—"} × ${r.image?.height ?? "—"}</dd>
-                <dt>زمن المعالجة</dt><dd class="num">${r.processing_ms ?? "—"} ms</dd>
-                <dt>بصمة الإعدادات</dt><dd class="num">${esc(r.config_fingerprint)} (محرك ${esc(r.engine_version)})</dd>
-              </dl>
-              <div class="row" style="margin-top:10px">
-                <button class="btn sm" id="reprocess">⟳ إعادة المعالجة بالإعدادات الحالية</button>
-                <a class="btn sm" id="dljson" href="#">${ICON.download} نتيجة الورقة JSON</a></div>
-            </details>
-          </div>
-
-          <div class="card"><h3>سجل التدقيق</h3>
+          <div class="card"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">سجل التدقيق</h3><span class="spacer"></span>
+              <button class="btn sm" id="reprocess">⟳ إعادة المعالجة</button></div>
             <ul class="audit">${(s.audit || []).slice().reverse().map((a) => `<li><time>${fmtDate(a.ts)}</time><b>${esc(auditLabel(a.action))}</b>
               ${a.actor ? ` — ${esc(a.actor)}` : ""}<div class="small muted">${esc(auditText(a))}</div></li>`).join("") || "<li class='muted'>لا يوجد</li>"}</ul></div>
         </section>
@@ -830,15 +811,6 @@ async function pageSheet(sid) {
       render();
       toast("تمت إعادة المعالجة");
     }));
-    document.getElementById("dljson")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      const blob = new Blob([JSON.stringify(s.result, null, 1)], { type: "application/json" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${s.result.candidate_id}.json`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    });
   };
 
   // keyboard shortcuts (layout independent: e.code, so they also work on an Arabic keyboard)
