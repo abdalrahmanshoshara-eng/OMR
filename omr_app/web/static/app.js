@@ -220,6 +220,9 @@ const ICON = {
   save: svgIcon('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/>', 17),
   check: svgIcon('<path d="M20 6 9 17l-5-5"/>', 17),
   undo: svgIcon('<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/>', 15),
+  edit: svgIcon('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', 16),
+  trash: svgIcon('<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>', 16),
+  plus: svgIcon('<path d="M12 5v14M5 12h14"/>', 17),
 };
 const emptyState = (icon, html) => `<div class="empty"><div class="big">${icon}</div>${html}</div>`;
 
@@ -235,6 +238,71 @@ function confirmDialog(msg, { ok = "تأكيد", cancel = "إلغاء", danger =
     document.body.append(d);
     d.showModal();
   });
+}
+
+// styled replacement for window.prompt(); resolves the trimmed text, or null when cancelled
+function promptDialog(title, value = "", { ok = "حفظ", placeholder = "" } = {}) {
+  return new Promise((resolve) => {
+    const d = document.createElement("dialog");
+    d.className = "dlg";
+    d.innerHTML = `<form method="dialog"><p>${esc(title)}</p>
+      <input type="text" name="v" dir="auto" value="${esc(value)}" placeholder="${esc(placeholder)}" style="width:100%;margin-bottom:16px" required>
+      <div class="row"><span class="spacer"></span><button class="btn" value="0" formnovalidate>إلغاء</button>
+      <button class="btn primary" value="1">${esc(ok)}</button></div></form>`;
+    const input = d.querySelector("input");
+    d.addEventListener("close", () => { resolve(d.returnValue === "1" ? input.value.trim() || null : null); d.remove(); });
+    document.body.append(d);
+    d.showModal();
+    input.select();
+  });
+}
+
+// ------------------------------------------------------------------ batch / sheet actions (shared by pages)
+async function renameBatch(b) {
+  const name = await promptDialog("اسم الدفعة الجديد", b.name);
+  if (!name || name === b.name) return false;
+  await api(`/api/batches/${b.id}`, jsonOpts("PATCH", { name }));
+  toast("تم تغيير اسم الدفعة");
+  return true;
+}
+async function deleteBatch(b) {
+  if (b.state === "queued" || b.state === "processing") { toast("لا يمكن حذف دفعة قيد المعالجة، انتظر حتى تنتهي", true); return false; }
+  const ok = await confirmDialog(`حذف الدفعة «${b.name}» نهائياً؟\nسيتم حذف ${b.total_sheets} ورقة مع صورها ونتائجها وسجل التدقيق. لا يمكن التراجع.`,
+    { ok: "حذف الدفعة", danger: true });
+  if (!ok) return false;
+  await api(`/api/batches/${b.id}`, { method: "DELETE" });
+  toast("تم حذف الدفعة");
+  return true;
+}
+async function deleteSheet(sid, label) {
+  const ok = await confirmDialog(`حذف الورقة «${label}» من الدفعة نهائياً؟\nستُحذف صورها ونتيجتها وسجل التدقيق الخاص بها.`,
+    { ok: "حذف الورقة", danger: true });
+  if (!ok) return false;
+  await api(`/api/sheets/${sid}`, { method: "DELETE" });
+  toast("تم حذف الورقة");
+  return true;
+}
+// opens the file picker and uploads the chosen scans into an existing batch
+function pickFiles() {
+  return new Promise((resolve) => {
+    const fi = document.createElement("input");
+    fi.type = "file";
+    fi.multiple = true;
+    fi.accept = ".png,.jpg,.jpeg,.pdf,.tif,.tiff,.bmp,.webp";
+    fi.addEventListener("change", () => resolve([...fi.files]));
+    fi.click();
+  });
+}
+async function addBatchFiles(bid, list) {
+  const files = list.filter((x) => /\.(png|jpe?g|pdf|tiff?|bmp|webp)$/i.test(x.name));
+  if (files.length < list.length) toast("تم تجاهل ملفات بصيغة غير مدعومة", true);
+  if (!files.length) return false;
+  const fd = new FormData();
+  files.forEach((x) => fd.append("files", x, x.name));
+  toast(`جارِ رفع ${files.length} ملف…`);
+  await api(`/api/batches/${bid}/files`, { method: "POST", body: fd });
+  toast(`تمت إضافة ${files.length} ملف، بدأت المعالجة`);
+  return true;
 }
 
 // ------------------------------------------------------------------ router
@@ -303,6 +371,7 @@ function statCards(c, total, avg, filter) {
 }
 
 async function pageBatches() {
+  clearInterval(pollTimer);
   const batches = await api("/api/batches");
   const tot = { AUTO_APPROVED: 0, REVIEW_REQUIRED: 0, MANUALLY_REVIEWED: 0, FAILED: 0 };
   let sheets = 0;
@@ -316,7 +385,7 @@ async function pageBatches() {
     <div class="card">
       ${batches.length ? `<div class="table-wrap"><table class="tbl">
         <thead><tr><th>#</th><th>الدفعة</th><th>الامتحان / الاختصاص</th><th>التاريخ</th><th>الحالة</th>
-          <th>الأوراق</th><th>معتمدة</th><th>للمراجعة</th><th>فشلت</th><th>المتوسط</th></tr></thead>
+          <th>الأوراق</th><th>معتمدة</th><th>للمراجعة</th><th>فشلت</th><th>المتوسط</th><th></th></tr></thead>
         <tbody>${batches.map((b) => `
           <tr data-go="#/batch/${b.id}" tabindex="0">
             <td class="num">${b.id}</td><td><b>${esc(b.name)}</b></td>
@@ -328,11 +397,20 @@ async function pageBatches() {
             <td class="num" style="color:var(--review)"><b>${b.counts.REVIEW_REQUIRED || 0}</b></td>
             <td class="num" style="color:var(--fail)">${b.counts.FAILED || 0}</td>
             <td class="num">${b.avg_score === null ? "—" : fmtScore(b.avg_score)}</td>
+            <td class="row-acts"><button class="btn sm icon" data-act="rename" data-id="${b.id}" title="تعديل الاسم" aria-label="تعديل الاسم">${ICON.edit}</button>
+              <button class="btn sm icon danger" data-act="delete" data-id="${b.id}" title="حذف الدفعة" aria-label="حذف الدفعة">${ICON.trash}</button></td>
           </tr>`).join("")}</tbody></table></div>`
         : emptyState(ICON.folder, `<p><b>لا توجد دفعات بعد</b><br>ابدأ برفع صور أو ملفات PDF لأوراق الإجابة الممسوحة.</p>
            <a class="btn primary lg" href="#/new">+ رفع أوراق</a>`)}
     </div>`;
   $app.querySelectorAll("[data-go]").forEach((tr) => tr.addEventListener("click", () => (location.hash = tr.dataset.go)));
+  $app.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const b = batches.find((x) => x.id === +btn.dataset.id);
+    try {
+      if (await (btn.dataset.act === "rename" ? renameBatch(b) : deleteBatch(b))) { clearInterval(pollTimer); pageBatches(); }
+    } catch (err) { toast(err.message, true); }
+  }));
   if (batches.some((b) => b.state === "queued" || b.state === "processing")) pollTimer = setInterval(() => location.hash === "#/" || !location.hash ? pageBatches() : null, 2500);
 }
 
@@ -430,12 +508,15 @@ async function pageBatch(bid) {
     const firstReview = sheets.find((s) => s.status === "REVIEW_REQUIRED");
     $app.innerHTML = `
       <div class="page-head">
-        <div><div class="small"><a href="#/">الدفعات</a> ‹</div><h1>${esc(b.name)}</h1>
+        <div><div class="small"><a href="#/">الدفعات</a> ‹</div>
+          <div class="title-edit"><h1>${esc(b.name)}</h1><button class="btn sm icon ghost" id="renameBatch" title="تعديل الاسم" aria-label="تعديل الاسم">${ICON.edit}</button></div>
           <p class="sub">${esc(keyLabel(key))} • ${fmtDate(b.created_at)} • ${badge(b.state)}</p></div>
         <div class="actions">
           ${firstReview ? `<a class="btn primary" href="#/sheet/${firstReview.id}">ابدأ المراجعة (${b.counts.REVIEW_REQUIRED})</a>` : ""}
           <a class="btn" href="/api/batches/${bid}/export.xlsx">${ICON.download} Excel</a>
           <a class="btn" href="/api/batches/${bid}/export.pdf">${ICON.download} PDF</a>
+          <button class="btn" id="addFiles">${ICON.plus} إضافة أوراق</button>
+          <button class="btn danger" id="delBatch" ${busy ? "disabled title='لا يمكن الحذف أثناء المعالجة'" : ""}>${ICON.trash} حذف الدفعة</button>
         </div>
       </div>
       ${busy ? `<div class="card" style="margin-bottom:16px"><div class="row"><b>جارِ معالجة الملفات…</b><span class="spacer"></span>
@@ -443,7 +524,8 @@ async function pageBatch(bid) {
           <div class="progress" style="margin-top:8px"><div style="width:${(100 * b.processed_files) / Math.max(1, b.total_files)}%"></div></div></div>` : ""}
       ${b.state === "error" ? `<div class="card st-FAILED" style="margin-bottom:16px">خطأ في المعالجة: ${esc(b.error)}</div>` : ""}
       ${statCards(b.counts, b.total_sheets, b.avg_score, filter)}
-      <div class="card">
+      <div class="card" id="sheetsCard">
+        <div class="drop-hint">${ICON.upload}<b>أفلت الملفات لإضافتها إلى هذه الدفعة</b></div>
         <div class="row" style="margin-bottom:12px">
           <input type="text" id="q" placeholder="بحث بالاسم أو الرقم أو اسم الملف…" value="${esc(search)}" style="flex:1;max-width:360px">
           <span class="spacer"></span>
@@ -451,12 +533,28 @@ async function pageBatch(bid) {
             <select id="rekey">${keyOptions(b.answer_key_id)}</select></label>
         </div>
         ${shown.length ? `<div class="table-wrap"><table class="tbl"><thead><tr>
-            <th>#</th><th>المرشح</th><th>الملف</th><th>الحالة</th><th>العلامة</th><th>الإجابات (س1 ← س${META.questions})</th><th>الملاحظات</th></tr></thead>
+            <th>#</th><th>المرشح</th><th>الملف</th><th>الحالة</th><th>العلامة</th><th>الإجابات (س1 ← س${META.questions})</th><th>الملاحظات</th><th></th></tr></thead>
           <tbody>${shown.map((s) => sheetRow(s)).join("")}</tbody></table></div>`
-          : emptyState(ICON.search, `<p>${busy ? "بانتظار النتائج…" : "لا توجد أوراق مطابقة للبحث أو التصفية"}</p>`)}
+          : emptyState(sheets.length ? ICON.search : ICON.upload, `<p>${busy ? "بانتظار النتائج…" : sheets.length ? "لا توجد أوراق مطابقة للبحث أو التصفية" : "لا توجد أوراق في هذه الدفعة"}</p>
+              ${!busy && !sheets.length ? `<button class="btn primary" data-add>${ICON.plus} إضافة أوراق</button>` : ""}`)}
       </div>`;
     $app.querySelectorAll("[data-filter]").forEach((el) => el.addEventListener("click", () => { filter = filter === el.dataset.filter ? "" : el.dataset.filter; render(); }));
     $app.querySelectorAll("[data-go]").forEach((tr) => tr.addEventListener("click", () => (location.hash = tr.dataset.go)));
+    const act = (fn) => async (e) => { e?.stopPropagation?.(); try { await fn(e); } catch (err) { toast(err.message, true); } };
+    document.getElementById("renameBatch").addEventListener("click", act(async () => { if (await renameBatch(b)) { ({ b, sheets } = await load()); render(); } }));
+    document.getElementById("delBatch").addEventListener("click", act(async () => { if (await deleteBatch(b)) location.hash = "#/"; }));
+    const add = act(async (list) => { if (await addBatchFiles(bid, list)) { ({ b, sheets } = await load()); render(); poll(); } });
+    $app.querySelectorAll("#addFiles, [data-add]").forEach((btn) => btn.addEventListener("click", act(async () => add(await pickFiles()))));
+    $app.querySelectorAll("[data-del-sheet]").forEach((btn) => btn.addEventListener("click", act(async () => {
+      if (await deleteSheet(+btn.dataset.delSheet, btn.dataset.label)) { ({ b, sheets } = await load()); render(); }
+    })));
+    // drag & drop scans anywhere on the sheets card
+    const card = document.getElementById("sheetsCard");
+    let depth = 0;
+    card.addEventListener("dragenter", (e) => { if (e.dataTransfer?.types.includes("Files")) { e.preventDefault(); depth++; card.classList.add("dropping"); } });
+    card.addEventListener("dragover", (e) => { if (e.dataTransfer?.types.includes("Files")) e.preventDefault(); });
+    card.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; card.classList.remove("dropping"); } });
+    card.addEventListener("drop", (e) => { e.preventDefault(); depth = 0; card.classList.remove("dropping"); add([...e.dataTransfer.files]); });
     const q = document.getElementById("q");
     q.addEventListener("input", () => { search = q.value; const pos = q.selectionStart; render(); const q2 = document.getElementById("q"); q2.focus(); q2.setSelectionRange(pos, pos); });
     document.getElementById("rekey").addEventListener("change", async (e) => {
@@ -470,15 +568,18 @@ async function pageBatch(bid) {
       } catch (err) { toast(err.message, true); }
     });
   };
-  render();
-  if (b.state === "queued" || b.state === "processing") {
+  const poll = () => {
+    clearInterval(pollTimer);
+    if (!(b.state === "queued" || b.state === "processing")) return;
     pollTimer = setInterval(async () => {
       if (!location.hash.startsWith(`#/batch/${bid}`)) return clearInterval(pollTimer);
       ({ b, sheets } = await load());
-      if (document.activeElement?.id !== "q") render();
+      if (document.activeElement?.id !== "q" && !document.querySelector("dialog[open], .dd.open")) render();
       if (!(b.state === "queued" || b.state === "processing")) { clearInterval(pollTimer); render(); toast("اكتملت معالجة الدفعة"); }
     }, 1500);
-  }
+  };
+  render();
+  poll();
 }
 
 function sheetRow(s) {
@@ -496,6 +597,7 @@ function sheetRow(s) {
     <td>${s.score === null ? "—" : `<div class="scorebar"><b class="num">${fmtScore(s.score)}</b><div class="track"><div class="fillx" style="width:${(100 * s.score) / max}%"></div></div></div>`}</td>
     <td><div class="mini-answers">${s.status === "FAILED" ? "" : mini}</div></td>
     <td class="small">${esc((s.status_reasons || []).join(" • "))}</td>
+    <td class="row-acts"><button class="btn sm icon danger" data-del-sheet="${s.id}" data-label="${esc(s.candidate_name || s.candidate_id)}" title="حذف الورقة" aria-label="حذف الورقة">${ICON.trash}</button></td>
   </tr>`;
 }
 
@@ -548,6 +650,7 @@ async function pageSheet(sid) {
         <div class="actions">
           <a class="btn ${s.nav.prev ? "" : "disabled"}" ${s.nav.prev ? `href="#/sheet/${s.nav.prev}"` : ""} title="P">→ السابقة</a>
           <a class="btn ${s.nav.next ? "" : "disabled"}" ${s.nav.next ? `href="#/sheet/${s.nav.next}"` : ""} title="N">التالية ←</a>
+          <button class="btn danger icon" id="delSheet" title="حذف الورقة" aria-label="حذف الورقة">${ICON.trash}</button>
         </div>
       </div>
       <div class="review-grid">
@@ -699,6 +802,11 @@ async function pageSheet(sid) {
       location.hash = `#/sheet/${s.nav.next_review || next}`;
     }));
     document.getElementById("reopen")?.addEventListener("click", wrap(async () => { await save({ reopen: true }); render(); toast("أعيد فتح المراجعة"); }));
+    document.getElementById("delSheet").addEventListener("click", wrap(async () => {
+      if (!(await deleteSheet(+sid, r.candidate_name || r.candidate_id))) return;
+      ovr = {};  // nothing left to save
+      location.hash = s.nav.next ? `#/sheet/${s.nav.next}` : s.nav.prev ? `#/sheet/${s.nav.prev}` : `#/batch/${s.batch_id}`;
+    }));
     document.getElementById("reprocess")?.addEventListener("click", wrap(async () => {
       if (!(await confirmDialog("إعادة قراءة هذه الورقة بالإعدادات الحالية؟\nستُستبدل القراءة الآلية، وتبقى التعديلات اليدوية في سجل التدقيق.", { ok: "إعادة المعالجة" }))) return;
       s = await api(`/api/sheets/${sid}/reprocess`, { method: "POST" });

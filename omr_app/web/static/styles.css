@@ -503,6 +503,7 @@ body.busy::after {
 
 /* confirm dialog */
 dialog.dlg {
+  width: min(440px, 92vw);
   border: 1px solid var(--gold-border); border-radius: var(--r-lg); padding: 22px 24px 18px; max-width: min(460px, 92vw);
   color: var(--text); background: var(--surface); box-shadow: 0 30px 70px -20px rgba(4, 48, 42, .55); font: inherit;
 }
@@ -607,3 +608,22 @@ button.fill:active { transform: translateY(1px); }
 .seg button.on { background: linear-gradient(135deg, var(--green-mid), var(--green-header)); border-color: var(--green-header); color: var(--invert); }
 label.row .dd { min-width: 300px; }
 .dd-item[hidden], .dd-group[hidden] { display: none; }
+
+/* ---------- batch / sheet management */
+.row-acts { white-space: nowrap; text-align: end; width: 1%; }
+.row-acts .btn + .btn { margin-inline-start: 4px; }
+.tbl tbody tr .row-acts .btn { opacity: .55; transition: opacity .12s; }
+.tbl tbody tr:hover .row-acts .btn, .tbl tbody tr:focus-within .row-acts .btn { opacity: 1; }
+@media (hover: none) { .tbl tbody tr .row-acts .btn { opacity: 1; } }
+.title-edit { display: flex; align-items: flex-start; gap: 12px; }
+.title-edit .btn { margin-top: 6px; }
+.page-head .btn.ghost { background: rgba(255, 255, 255, .08); border-color: rgba(199, 166, 107, .35); color: var(--gold-hover); box-shadow: none; }
+.page-head .btn.ghost:hover { background: rgba(199, 166, 107, .22); color: #fff; }
+#sheetsCard { position: relative; }
+.drop-hint {
+  display: none; position: absolute; inset: 0; z-index: 5; border-radius: inherit; pointer-events: none;
+  flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(238, 245, 242, .94); border: 2px dashed var(--gold); color: var(--green-header); font-size: 16px;
+}
+.drop-hint svg { width: 40px; height: 40px; color: var(--gold-ink); }
+#sheetsCard.dropping .drop-hint { display: flex; }

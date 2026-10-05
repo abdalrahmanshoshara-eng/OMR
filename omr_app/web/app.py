@@ -174,18 +174,30 @@ def list_batches():
 @app.post("/api/batches")
 async def create_batch(answer_key_id: str = Form(...), name: str = Form(""), files: List[UploadFile] = File(...)):
     _key(answer_key_id)
+    files = _check_files(files)
+    name = name.strip() or time.strftime("Batch %Y-%m-%d %H:%M")
+    bid = store.create_batch(name, answer_key_id, len(files))
+    await _save_uploads(bid, files, start_idx=1)
+    log.info("batch %s created: %d files, key %s", bid, len(files), answer_key_id)
+    jobs.put(bid)
+    return store.batch(bid)
+
+
+def _check_files(files):
     files = [f for f in files if f.filename]
     if not files:
         raise HTTPException(400, "no files uploaded")
     bad = [f.filename for f in files if Path(f.filename).suffix.lower() not in SUPPORTED_EXTS]
     if bad:
         raise HTTPException(400, f"unsupported file type: {', '.join(bad)}")
-    name = name.strip() or time.strftime("Batch %Y-%m-%d %H:%M")
-    bid = store.create_batch(name, answer_key_id, len(files))
+    return files
+
+
+async def _save_uploads(bid, files, start_idx):
     up_dir = _batch_dir(bid) / "uploads"
     up_dir.mkdir(parents=True, exist_ok=True)
     total = 0
-    for i, f in enumerate(files, 1):
+    for i, f in enumerate(files, start_idx):
         dest = up_dir / f"{i:04d}_{_safe_name(f.filename)}"
         with open(dest, "wb") as out:
             while chunk := await f.read(1 << 20):
@@ -194,8 +206,36 @@ async def create_batch(answer_key_id: str = Form(...), name: str = Form(""), fil
                     raise HTTPException(413, f"upload larger than {MAX_UPLOAD_MB} MB")
                 out.write(chunk)
         store.add_upload(bid, i, Path(f.filename).name, dest)
-    log.info("batch %s created: %d files, key %s", bid, len(files), answer_key_id)
+
+
+@app.post("/api/batches/{bid}/files")
+async def add_batch_files(bid: int, files: List[UploadFile] = File(...)):
+    """Add more scans to an existing batch; only the new files are graded."""
+    b = store.batch(bid)
+    if not b:
+        raise HTTPException(404, "batch not found")
+    files = _check_files(files)
+    last = store.q("SELECT MAX(idx) m FROM uploads WHERE batch_id=?", (bid,), one=True)["m"] or 0
+    await _save_uploads(bid, files, start_idx=last + 1)
+    store.x("UPDATE batches SET total_files=total_files+?, error=NULL, state=CASE WHEN state='processing' THEN state ELSE 'queued' END WHERE id=?",
+            (len(files), bid))
+    log.info("batch %s: %d files added", bid, len(files))
     jobs.put(bid)
+    return store.batch(bid)
+
+
+class BatchIn(BaseModel):
+    name: str
+
+
+@app.patch("/api/batches/{bid}")
+def rename_batch(bid: int, body: BatchIn):
+    if not store.batch(bid):
+        raise HTTPException(404, "batch not found")
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "اسم الدفعة لا يمكن أن يكون فارغاً")
+    store.x("UPDATE batches SET name=? WHERE id=?", (name[:200], bid))
     return store.batch(bid)
 
 
@@ -385,6 +425,29 @@ def reprocess_sheet(sid: int, actor: Optional[str] = None):
     store.update_sheet(sid, r)
     store.audit(sid, "reprocessed", {"status": r["status"], "score": r.get("score"), "config": r.get("config_fingerprint")}, actor)
     return get_sheet(sid)
+
+
+@app.delete("/api/sheets/{sid}")
+def delete_sheet(sid: int):
+    """Remove one sheet (and its images). The uploaded file goes too once none of its pages are left."""
+    s = store.sheet(sid)
+    if not s:
+        raise HTTPException(404, "sheet not found")
+    up = store.q("SELECT * FROM uploads WHERE id=?", (s["upload_id"],), one=True)
+    if up and up["state"] != "done":
+        raise HTTPException(409, "الورقة ما زالت قيد المعالجة")
+    art = s["result"].get("artifacts") or {}
+    for name in {art.get("aligned"), art.get("overlay"), *(art.get("fields") or {}).values()} - {None}:
+        (Path(s["image_dir"]) / name).unlink(missing_ok=True)
+    store.x("DELETE FROM sheets WHERE id=?", (sid,))
+    if up and not store.q("SELECT 1 FROM sheets WHERE upload_id=? LIMIT 1", (up["id"],)):
+        Path(up["stored_path"]).unlink(missing_ok=True)
+        shutil.rmtree(s["image_dir"], ignore_errors=True)
+        store.x("DELETE FROM uploads WHERE id=?", (up["id"],))
+        store.x("UPDATE batches SET total_files=MAX(total_files-1,0), processed_files=MAX(processed_files-1,0) WHERE id=?",
+                (s["batch_id"],))
+    log.info("sheet %s deleted from batch %s", sid, s["batch_id"])
+    return {"deleted": sid, "batch_id": s["batch_id"]}
 
 
 @app.get("/api/sheets/{sid}/image/{kind}")
