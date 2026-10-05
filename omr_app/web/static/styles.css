@@ -627,3 +627,9 @@ label.row .dd { min-width: 300px; }
 }
 .drop-hint svg { width: 40px; height: 40px; color: var(--gold-ink); }
 #sheetsCard.dropping .drop-hint { display: flex; }
+
+/* review: suggested option for a doubtful question (highest fill, waiting for "تم") */
+.fill.sug { border: 2px dashed var(--gold); background: var(--gold-wash); }
+.fill.sug .o { color: var(--gold-ink); }
+.qact .btn.success { min-height: 30px; }
+.qact .btn.success.close-call { background: linear-gradient(135deg, #b98a2a, #8a6413); border-color: #8a6413; }

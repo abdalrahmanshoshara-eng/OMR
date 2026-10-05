@@ -616,12 +616,19 @@ async function pageSheet(sid) {
   focusQ = firstOpen();
   leaveGuard = () => Object.keys(ovr).length > 0;
 
+  // suggestion for a doubtful question: the option with the highest fill (the reviewer confirms it)
+  const suggest = (qd) => META.options.reduce((best, o) => ((qd.fills[o] || 0) > (qd.fills[best] || 0) ? o : best), META.options[0]);
+  // top two options within 10 points -> the suggestion is a close call, flag it
+  const isClose = (qd) => { const f = META.options.map((o) => qd.fills[o] || 0).sort((a, b) => b - a); return f[0] - f[1] < 0.1; };
+  const setChoice = (qd, v) => {
+    const target = !v || v === qd.detected ? null : v;
+    if (target === (qd.override || null)) delete ovr[qd.q]; else ovr[qd.q] = target;
+  };
   // choose v for question q (null/"" = back to the machine reading)
   const pick = (q, v) => {
     const qd = qs().find((x) => x.q === q);
     if (!qd) return;
-    const target = !v || v === qd.detected ? null : v;
-    if (target === (qd.override || null)) delete ovr[q]; else ovr[q] = target;
+    setChoice(qd, v);
     const next = qs().find((x) => x.q > q && needsDecision(x)) || qs().find(needsDecision);
     focusQ = next ? next.q : q;
     scrollToFocus = true;
@@ -696,7 +703,7 @@ async function pageSheet(sid) {
             <div class="row" style="margin-bottom:6px"><h2 style="margin:0">الأسئلة</h2><span class="spacer"></span>
               <span class="small muted">اضغط على الخيار لاختياره يدوياً • <span class="key-mark"></span> = إجابة سلم التصحيح</span></div>
             <div class="kbd-hint small muted">
-              <span><kbd>A</kbd>–<kbd>D</kbd> اختيار</span><span><kbd>0</kbd> فارغ</span><span><kbd>↑</kbd><kbd>↓</kbd> السؤال</span>
+              <span><kbd>A</kbd>–<kbd>D</kbd> اختيار</span><span><kbd>Space</kbd> تم (الاقتراح)</span><span><kbd>0</kbd> فارغ</span><span><kbd>↑</kbd><kbd>↓</kbd> السؤال</span>
               <span><kbd>Enter</kbd> اعتماد</span><span><kbd>Ctrl</kbd>+<kbd>S</kbd> حفظ</span><span><kbd>N</kbd>/<kbd>P</kbd> الورقة التالية/السابقة</span>
             </div>
             <table class="qtable"><thead><tr><th>س</th><th>الخيارات (نسبة التعبئة)</th><th>المكتشف</th><th>الصحيح</th><th>النهائي</th><th></th></tr></thead><tbody>
@@ -708,7 +715,7 @@ async function pageSheet(sid) {
                 <td class="qnum num">${qd.q}</td>
                 <td><div class="fills">${META.options.map((o) => `
                     <button type="button" data-q="${qd.q}" data-pick="${o}"
-                      class="fill ${qd.detected === o || (qd.detected in VALUE_AR && qd.fills[o] >= META.thresholds.classification.uncertain_min_fill) ? "sel" : ""} ${o === exp ? "exp" : ""} ${qd.shapes?.[o] === "strokes" ? "stroke" : ""} ${cur && fin === o ? "pick" : ""}"
+                      class="fill ${qd.detected === o || (qd.detected in VALUE_AR && qd.fills[o] >= META.thresholds.classification.uncertain_min_fill) ? "sel" : ""} ${o === exp ? "exp" : ""} ${qd.shapes?.[o] === "strokes" ? "stroke" : ""} ${cur && fin === o ? "pick" : ""} ${needsDecision(qd) && suggest(qd) === o ? "sug" : ""}"
                       title="اختيار ${o} • تعبئة ${pct(qd.fills[o])}% • داخل الدائرة ${pct(qd.hole?.[o])}%${qd.shapes?.[o] === "strokes" ? " • شكل ✓/×" : ""}">
                       <span class="o">${o}</span><span class="p num">${pct(qd.fills[o])}%</span><span class="bar"><i style="width:${pct(qd.fills[o])}%"></i></span></button>`).join("")}</div>
                   <div class="reason">${esc(qd.reason)}</div></td>
@@ -716,12 +723,14 @@ async function pageSheet(sid) {
                 <td><span class="ans neutral">${esc(exp || "—")}</span></td>
                 <td><span class="ans ${special ? fin : ok ? "correct" : "wrong"}">${esc(valueLabel(fin))}</span></td>
                 <td class="qact">
-                  <button type="button" class="btn sm ${cur && fin === "BLANK" ? "on" : ""}" data-q="${qd.q}" data-pick="BLANK" title="فارغ (0)">فارغ</button>
+                  ${needsDecision(qd) ? `<button type="button" class="btn sm success ${isClose(qd) ? "close-call" : ""}" data-q="${qd.q}" data-pick="${suggest(qd)}"
+                    title="${isClose(qd) ? "تنبيه: نسبتا أعلى خيارين متقاربتان، تحقّق من الصورة قبل الاعتماد" : "اعتماد الاقتراح: الخيار الأعلى تعبئة"} (Space)">${ICON.check} تم ${suggest(qd)}${isClose(qd) ? " ⚠" : ""}</button>` : ""}
                   ${cur ? `<button type="button" class="btn sm icon" data-q="${qd.q}" data-pick="" title="إلغاء التعديل والعودة للقراءة الآلية">${ICON.undo}</button>` : ""}
                 </td></tr>`;
             }).join("")}
             </tbody></table>
             <div class="review-actions">
+              ${unresolved.length > 1 ? `<button class="btn success" id="acceptAll" title="اعتماد الخيار الأعلى تعبئة لكل الأسئلة المشكوك بها">${ICON.check} تم للكل (${unresolved.length})</button>` : ""}
               <button class="btn" id="save">${ICON.save} حفظ</button>
               <button class="btn success" id="approve" ${unresolved.length ? "disabled" : ""}
                 title="${unresolved.length ? "احسم الأسئلة: " + unresolved.map((x) => x.q).join("، ") : "اعتماد الورقة"}">${ICON.check} اعتماد الورقة</button>
@@ -762,6 +771,12 @@ async function pageSheet(sid) {
     $app.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => { view = b.dataset.view; render(); }));
     $app.querySelectorAll("img.sheet, img[data-zoom]").forEach((im) => im.addEventListener("click", () => lightbox(im.src)));
     $app.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); pick(+b.dataset.q, b.dataset.pick); }));
+    document.getElementById("acceptAll")?.addEventListener("click", () => {
+      qs().filter(needsDecision).forEach((qd) => setChoice(qd, suggest(qd)));
+      focusQ = null;
+      render();
+      toast("تم اعتماد الاقتراحات — راجعها ثم اضغط اعتماد الورقة");
+    });
     $app.querySelectorAll("tr[data-row]").forEach((tr) => tr.addEventListener("click", () => {
       if (focusQ === +tr.dataset.row) return;
       $app.querySelector("tr.q.cur")?.classList.remove("cur");
@@ -839,6 +854,11 @@ async function pageSheet(sid) {
     const opts = { KeyA: "A", KeyB: "B", KeyC: "C", KeyD: "D", KeyE: "E", Digit0: "BLANK", Numpad0: "BLANK" };
     const v = opts[e.code];
     if (v && (v === "BLANK" || META.options.includes(v)) && focusQ !== null) { e.preventDefault(); pick(focusQ, v); return; }
+    if (e.code === "Space" && !e.target.closest?.("button, a")) {
+      const qd = qs().find((x) => x.q === focusQ);
+      if (qd && needsDecision(qd)) { e.preventDefault(); pick(qd.q, suggest(qd)); }
+      return;
+    }
     if ((e.code === "ArrowDown" || e.code === "ArrowUp") && qs().length) {
       e.preventDefault();
       const i = qs().findIndex((x) => x.q === focusQ);

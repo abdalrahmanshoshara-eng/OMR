@@ -157,11 +157,70 @@ class Aligner:
         inl_mask = good & (resid <= rc["max_residual_px"])
         info["residual_px"] = round(float(np.sqrt(np.mean(resid[inl_mask] ** 2))) if inl_mask.any() else 0.0, 2)
         info["refine_shift_px"] = round(float(np.median(np.linalg.norm(fitted - src, axis=1))), 2)
+        # only with the narrow search: a wide window can lock onto the O of the neighbouring row
+        if rc.get("column_correction", True) and search_pt == rc["search_radius_pt"]:
+            fitted = self._column_correction(keys, fitted, meas, good, info)
+        resid = np.linalg.norm(fitted - meas, axis=1)
+        inl_mask = good & (resid <= thr)
         for i, k in enumerate(keys):
-            # measured position when the glyph matched well and agrees with the model, else the model
+            # measured position when the glyph matched well and agrees with the (column-corrected) model, else the model
             centers[k] = tuple(map(float, meas[i] if inl_mask[i] else fitted[i]))
         info["refine"] = "ok"
         return centers, info, False
+
+    def _column_correction(self, keys, fitted, meas, good, info):
+        """Per-column correction on top of the sheet-wide transform.
+
+        Phone scans of a page that is not perfectly flat bend the answer table, so a column can sit
+        several pixels away from where a single sheet-wide transform puts it, and the offset can grow
+        along the column (shift + slight tilt / stretch). Every bubble of such a column is then measured
+        off-centre: empty bubbles look half-filled and filled ones look partial.
+
+        For each option column the glyph offsets (measured - model) are fitted as a straight line along
+        the column (offset = a + b * y), robustly: points further than max_residual_px from the line are
+        dropped and the line is refitted. When enough matched glyphs agree, the whole column - including
+        filled bubbles, which cannot be matched themselves - follows that line. Columns with too few or
+        inconsistent matches keep the sheet-wide transform.
+        """
+        rc = self.cfg["refine"]
+        thr = rc["max_residual_px"]
+        min_n = rc.get("column_min_matches", 4)
+        # a real column offset is always within the narrow glyph search window, and the table can only
+        # stretch / tilt a few percent; anything larger is a mismatch, not distortion
+        max_px = rc["search_radius_pt"] * self.layout.dpi / 72.0
+        max_slope = rc.get("column_max_slope", 0.05)
+        out = fitted.copy()
+        shifts = {}
+        for opt in self.layout.options:
+            idx = np.array([i for i, k in enumerate(keys) if k[1] == opt])
+            if not len(idx):
+                continue
+            g = idx[good[idx]]
+            if len(g) < min_n:
+                continue
+            y = fitted[:, 1]
+            d = meas - fitted
+            use = g
+            for _ in range(3):  # fit, drop outliers, refit
+                deg = 1 if len(use) >= min_n else 0
+                cx, cy = np.polyfit(y[use], d[use, 0], deg), np.polyfit(y[use], d[use, 1], deg)
+                pred = np.column_stack([np.polyval(cx, y[g]), np.polyval(cy, y[g])])
+                keep = g[np.linalg.norm(d[g] - pred, axis=1) <= thr]
+                if len(keep) < min_n or np.array_equal(keep, use):
+                    break
+                use = keep
+            if len(keep) < max(min_n, 0.6 * len(g)):
+                continue  # matched glyphs do not agree on one line (checked against the final fit)
+            corr = np.column_stack([np.polyval(cx, y[idx]), np.polyval(cy, y[idx])])
+            if np.abs(corr).max() <= thr / 2:
+                continue  # negligible
+            if np.abs(corr).max() > max_px or (len(cx) > 1 and max(abs(cx[0]), abs(cy[0])) > max_slope):
+                continue  # implausible -> keep the sheet-wide transform
+            out[idx] = fitted[idx] + corr
+            shifts[opt] = [round(float(np.abs(corr[:, 0]).max()), 1), round(float(np.abs(corr[:, 1]).max()), 1)]
+        if shifts:
+            info["column_shift_px"] = shifts  # max |dx|, |dy| applied per column
+        return out
 
     # ------------------------------------------------------------------ main
     def align(self, gray: np.ndarray) -> AlignmentResult:
